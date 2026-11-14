@@ -31,7 +31,7 @@ export async function getShifts() {
     orderBy: [{ startsAt: "asc" }, { id: "asc" }],
     select: { id: true, startsAt: true, endsAt: true, capacity: true, status: true,
       definition: { select: { name: true, role: { select: { name: true } } } },
-      assignments: { where: { status: { not: "CANCELLED" } }, orderBy: { volunteer: { displayName: "asc" } },
+      assignments: { where: { status: "ASSIGNED" }, orderBy: { volunteer: { displayName: "asc" } },
         select: { id: true, status: true, volunteer: { select: { displayName: true } } } } },
   });
 }

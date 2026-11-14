@@ -80,7 +80,7 @@ export async function getShiftType(id: string) {
   return definition ? { definition, canWrite: canWrite(user.role) } : null;
 }
 export function shiftRestriction(shift: { startsAt: Date; status: string; _count: { assignments: number } }) {
-  if (shift._count.assignments) return "Assignment history exists. Changes are deferred until assignment management is available.";
+  if (shift._count.assignments) return "Assignment history exists. Shift times, capacity, and cancellation are protected, including after assignments are canceled.";
   if (shift.status !== "SCHEDULED") return "Completed and canceled shifts are read-only. Restoration is deferred.";
   if (shift.startsAt <= new Date()) return "Shifts that have started are historical and read-only.";
   return null;
