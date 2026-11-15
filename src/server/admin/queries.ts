@@ -3,18 +3,7 @@ import { getDatabase } from "../db";
 import { requirePermission } from "../auth/permissions";
 
 // Each operation checks current permissions, even when called outside a page.
-export async function getDashboard() {
-  await requirePermission("volunteers:read");
-  await requirePermission("scheduling:read");
-  const db = getDatabase();
-  const [activeVolunteers, activeRoles, scheduledShifts, assignedVolunteers] = await db.$transaction([
-    db.volunteerProfile.count({ where: { status: "ACTIVE" } }),
-    db.volunteerRole.count({ where: { isActive: true } }),
-    db.shift.count({ where: { status: "SCHEDULED" } }),
-    db.shiftAssignment.count({ where: { status: "ASSIGNED", shift: { status: "SCHEDULED" } } }),
-  ]);
-  return { activeVolunteers, activeRoles, scheduledShifts, assignedVolunteers };
-}
+export { getDashboard } from "./dashboard";
 
 export async function getVolunteers() {
   await requirePermission("volunteers:read");

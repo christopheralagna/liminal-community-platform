@@ -232,7 +232,7 @@ describe("real Better Auth / PostgreSQL authentication and authorization", () =>
       pageHeaders = authenticated((await login(role)).cookie);
       const summary = await getDashboard();
       expect(summary.activeVolunteers).toBe(await db.volunteerProfile.count({ where: { status: "ACTIVE" } }));
-      expect(summary.scheduledShifts).toBe(await db.shift.count({ where: { status: "SCHEDULED" } }));
+      expect(summary.upcomingShifts).toBe(await db.shift.count({ where: { status: "SCHEDULED", startsAt: { gt: summary.windowStart, lt: summary.windowEnd } } }));
       expect((await getVolunteers()).length).toBe(await db.volunteerProfile.count());
       expect((await getShifts()).length).toBe(await db.shift.count());
     }

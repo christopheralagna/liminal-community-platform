@@ -36,7 +36,7 @@ export default async function ShiftPage({ params, searchParams }: { params: Prom
       <CapacityForm key={`${id}:${shift.updatedAt.toISOString()}:capacity`} id={id} updatedAt={shift.updatedAt.toISOString()} capacity={shift.capacity} activeAssignments={active.length} />
     </>}
     {canWrite && !restriction && active.length === 0 && <><ShiftForm key={`${id}:${shift.updatedAt.toISOString()}`} id={id} updatedAt={shift.updatedAt.toISOString()} hasHistory={history.length > 0} initial={{ date: phoenixDate(shift.startsAt), endDate: phoenixDate(shift.endsAt), start: localTime(shift.startsAt), end: localTime(shift.endsAt), capacity: shift.capacity }} /><CancelShift id={id} updatedAt={shift.updatedAt.toISOString()} hasHistory={history.length > 0} /></>}
-    <StaffingFeedback><h2 className="mt-8 text-xl font-semibold">Assigned volunteers</h2>
+    <StaffingFeedback><h2 id="assignments" className="mt-8 text-xl font-semibold">Assigned volunteers</h2>
     {staffingRestriction && <p className="mt-3 text-cream-300">{staffingRestriction}</p>}
     {active.length ? <ul className="mt-4 space-y-4">{active.map(assignment => <li key={assignment.id}>
       <Link className="text-peach-200 underline" href={`/admin/volunteers/${assignment.volunteerId}`}>{assignment.volunteer.displayName}</Link> · Assigned
