@@ -5,7 +5,7 @@ import { dateOnly, phoenixDate } from "@/server/scheduling/dates";
 import { readAdminPage } from "@/server/admin/page-access";
 import { Notice } from "@/components/admin/Notice";
 import { SchedulingNav, scheduleTime, ShiftState } from "@/components/admin/SchedulingDisplay";
-import { CancelShift, ShiftForm } from "@/components/admin/SchedulingForms";
+import { CancelShift, CapacityForm, ShiftForm } from "@/components/admin/SchedulingForms";
 import { assignmentRestriction, getAssignmentCandidates } from "@/server/scheduling/assignments";
 import { AssignVolunteer, CancelAssignment, StaffingFeedback } from "@/components/admin/ShiftStaffing";
 const localTime = (date: Date) => new Intl.DateTimeFormat("en-GB", { timeZone: "America/Phoenix", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
@@ -31,7 +31,11 @@ export default async function ShiftPage({ params, searchParams }: { params: Prom
     </div>
     {!canWrite && <p className="mt-5">Read-only access.</p>}
     {restriction && <p className="mt-5 text-cream-300">{restriction}</p>}
-    {canWrite && !restriction && <><ShiftForm key={`${id}:${shift.updatedAt.toISOString()}`} id={id} updatedAt={shift.updatedAt.toISOString()} initial={{ date: phoenixDate(shift.startsAt), endDate: phoenixDate(shift.endsAt), start: localTime(shift.startsAt), end: localTime(shift.endsAt), capacity: shift.capacity }} /><CancelShift id={id} updatedAt={shift.updatedAt.toISOString()} /></>}
+    {canWrite && !restriction && active.length > 0 && <>
+      <p className="mt-5 text-cream-300">Cancel assigned volunteers before changing this shift’s time. Cancel assignments before canceling this shift. You can change capacity below.</p>
+      <CapacityForm key={`${id}:${shift.updatedAt.toISOString()}:capacity`} id={id} updatedAt={shift.updatedAt.toISOString()} capacity={shift.capacity} activeAssignments={active.length} />
+    </>}
+    {canWrite && !restriction && active.length === 0 && <><ShiftForm key={`${id}:${shift.updatedAt.toISOString()}`} id={id} updatedAt={shift.updatedAt.toISOString()} hasHistory={history.length > 0} initial={{ date: phoenixDate(shift.startsAt), endDate: phoenixDate(shift.endsAt), start: localTime(shift.startsAt), end: localTime(shift.endsAt), capacity: shift.capacity }} /><CancelShift id={id} updatedAt={shift.updatedAt.toISOString()} hasHistory={history.length > 0} /></>}
     <StaffingFeedback><h2 className="mt-8 text-xl font-semibold">Assigned volunteers</h2>
     {staffingRestriction && <p className="mt-3 text-cream-300">{staffingRestriction}</p>}
     {active.length ? <ul className="mt-4 space-y-4">{active.map(assignment => <li key={assignment.id}>
@@ -44,7 +48,8 @@ export default async function ShiftPage({ params, searchParams }: { params: Prom
         <Link className="text-peach-200 underline" href={`/admin/volunteers/${assignment.volunteerId}`}>{assignment.volunteer.displayName}</Link> · {assignment.status === "CANCELLED" ? "Canceled" : "Completed"}
         <p className="text-sm text-cream-300">First assigned {scheduleTime.format(assignment.createdAt)} · Last changed {scheduleTime.format(assignment.updatedAt)}</p>
       </li>)}</ul> : <p className="mt-3 text-cream-300">No canceled or completed assignments.</p>}
-      <p className="mt-3 text-sm text-cream-300">Assigning a canceled volunteer again restores their assignment. Individual cancellation and restoration events are not retained.</p>
+      {history.length > 0 && <p className="mt-3 text-sm text-cream-300">History refers to this shift’s current schedule. Original scheduled times and individual cancellation or restoration events are not retained.</p>}
+      {history.some(assignment => assignment.status === "CANCELLED") && <p className="mt-3 text-sm text-cream-300">Assigning a canceled volunteer again restores their assignment.</p>}
     </details></StaffingFeedback>
   </>;
 }

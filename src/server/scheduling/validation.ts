@@ -5,6 +5,7 @@ const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM local ti
 export const minute = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
 const capacity = z.number().int().positive().max(1000);
 export const versionSchema = z.object({ id: z.uuid(), updatedAt: z.iso.datetime() });
+export const capacityUpdateSchema = versionSchema.extend({ capacity }).strict();
 export const definitionUpdateSchema = versionSchema.extend({ name: z.string().trim().min(1).max(120), isActive: z.boolean() });
 export const definitionSchema = z.object({ id: z.uuid(), name: z.string().trim().min(1).max(120), roleId: z.uuid({ error: "Choose an operational role." }) });
 const interval = z.object({ date: dateSchema, start: time, endDate: dateSchema, end: time, capacity });
@@ -26,8 +27,8 @@ export const cancelPatternSchema = versionSchema;
 export const revisionSchema = z.object({ ...versionSchema.shape, successor: patternSchema });
 export type MutationResult = { ok: true; id: string; message?: string } | { ok: false; error: string; issues?: string[]; fieldErrors?: Record<string, string>; blockedShifts?: { id: string; startsAt: string }[] };
 
-export type SchedulingCommand = "definition" | "createShift" | "editShift" | "cancelShift" | "createPattern" | "generate" | "endPattern" | "revisePattern" | "shortenPattern" | "cancelPattern" | "extendPattern" | "updateDefinition" | "deleteDefinition";
-export const schedulingSchemas = { definition: definitionSchema, updateDefinition: definitionUpdateSchema, deleteDefinition: versionSchema, createShift: shiftSchema, editShift: editSchema, cancelShift: versionSchema, createPattern: patternSchema, generate: generationSchema, endPattern: endSchema, revisePattern: revisionSchema, shortenPattern: endSchema, cancelPattern: cancelPatternSchema, extendPattern: extensionSchema };
+export type SchedulingCommand = "definition" | "createShift" | "editShift" | "updateCapacity" | "cancelShift" | "createPattern" | "generate" | "endPattern" | "revisePattern" | "shortenPattern" | "cancelPattern" | "extendPattern" | "updateDefinition" | "deleteDefinition";
+export const schedulingSchemas = { definition: definitionSchema, updateDefinition: definitionUpdateSchema, deleteDefinition: versionSchema, createShift: shiftSchema, editShift: editSchema, updateCapacity: capacityUpdateSchema, cancelShift: versionSchema, createPattern: patternSchema, generate: generationSchema, endPattern: endSchema, revisePattern: revisionSchema, shortenPattern: endSchema, cancelPattern: cancelPatternSchema, extendPattern: extensionSchema };
 export function validationFields(error: z.ZodError): Record<string, string> {
   return Object.fromEntries(error.issues.map(issue => [String(issue.path[0] || "form"), issue.message]));
 }

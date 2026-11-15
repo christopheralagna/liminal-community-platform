@@ -8,7 +8,7 @@ export async function schedulingAction(command: SchedulingCommand, input: unknow
     revalidatePath("/admin");
     revalidatePath("/admin/scheduling");
     revalidatePath("/admin/scheduling/patterns");
-    if (command === "createShift" || command === "editShift" || command === "cancelShift") {
+    if (command === "createShift" || command === "editShift" || command === "updateCapacity" || command === "cancelShift") {
       revalidatePath(`/admin/scheduling/${result.id}`);
     } else if (["definition", "updateDefinition", "deleteDefinition"].includes(command)) {
       revalidatePath("/admin/scheduling/types");
@@ -17,7 +17,10 @@ export async function schedulingAction(command: SchedulingCommand, input: unknow
       revalidatePath("/admin/scheduling/patterns/[id]", "page");
       revalidatePath("/admin/scheduling/new");
       revalidatePath("/admin/scheduling/patterns/new");
-    } else revalidatePath(`/admin/scheduling/patterns/${result.id}`);
+    } else {
+      revalidatePath(`/admin/scheduling/patterns/${result.id}`);
+      if (command === "shortenPattern" || command === "cancelPattern") revalidatePath("/admin/scheduling/[id]", "page");
+    }
   }
   if (result.ok && navigate) {
     if (["createShift", "editShift"].includes(command)) redirect(`/admin/scheduling/${result.id}?saved=1`, RedirectType.replace);

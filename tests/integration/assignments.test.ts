@@ -14,6 +14,7 @@ import { getAssignmentCandidates, mutateAssignment } from "../../src/server/sche
 import { getShift, mutateScheduling } from "../../src/server/scheduling/service";
 import { saveVolunteer, getVolunteerEditor } from "../../src/server/volunteers/service";
 import { assignmentAction } from "../../src/app/admin/(protected)/scheduling/assignment-actions";
+import { schedulingAction } from "../../src/app/admin/(protected)/scheduling/actions";
 import ShiftPage from "../../src/app/admin/(protected)/scheduling/[id]/page";
 import { addDays, dateValue, dayNumber, localInstant, phoenixDate } from "../../src/server/scheduling/dates";
 import { revalidatePath } from "next/cache";
@@ -184,7 +185,7 @@ it("cancels without deleting history and reactivates the same row with current e
   const canceled = await db.shiftAssignment.findUniqueOrThrow({ where: { id: before.id } });
   expect(canceled).toMatchObject({ ...before, status: "CANCELLED", updatedAt: expect.any(Date) });
   expect(canceled.updatedAt > before.updatedAt).toBe(true);
-  expect(await mutateScheduling("cancelShift", versionOf(s))).toMatchObject({ ok: false, error: expect.stringContaining("Assignment history") });
+  expect((await getShift(s.id))!.restriction).toBeNull();
   expect(await mutateAssignment("assign", await input(s.id, second.id))).toMatchObject({ ok: true });
   expect(await mutateAssignment("assign", await input(s.id, v.id))).toMatchObject({ ok: false, error: "This shift is full." });
   expect(await mutateAssignment("cancel", await input(s.id, second.id))).toMatchObject({ ok: true });
@@ -414,4 +415,245 @@ it("preserves assignments when a subsequent profile save changes eligibility", a
   expect(await db.shiftAssignment.findUnique({ where: { id: before.id } })).toEqual(before);
   // Historical preservation does not prevent coordinators canceling this future assignment.
   expect(await mutateAssignment("cancel", await input(s.id, v.id))).toMatchObject({ ok: true });
+});
+
+// Phase 5D: historical rows no longer freeze future scheduling.
+async function recurringShift() {
+  const pattern = await db.shiftPattern.create({ data: { definitionId, dayOfWeek: dayNumber(future), startMinute: 540, durationMinutes: 180, capacity: 4, validFrom: dateValue(future) } });
+  const row = await db.shift.create({ data: { definitionId, patternId: pattern.id, occurrenceDate: dateValue(future), startsAt: localInstant(future, 540), endsAt: localInstant(future, 720), capacity: 4 } });
+  return { pattern, row };
+}
+const timeEdit = (row: { id: string; updatedAt: Date }) => ({ ...versionOf(row), date: addDays(future, 1), endDate: addDays(future, 1), start: "11:00", end: "13:00", capacity: 3 });
+async function history(shiftId: string) {
+  const a = await volunteer(), b = await volunteer();
+  await db.shiftAssignment.createMany({ data: [{ shiftId, volunteerId: a.id, status: "CANCELLED" }, { shiftId, volunteerId: b.id, status: "COMPLETED" }] });
+  return db.shiftAssignment.findMany({ where: { shiftId }, orderBy: { id: "asc" } });
+}
+it("5D edits and cancels one-time and recurring shifts while preserving all historical rows", async () => {
+  for (const recurring of [false, true]) {
+    const s = recurring ? (await recurringShift()).row : await shift();
+    const before = await history(s.id);
+    expect(await mutateScheduling("editShift", timeEdit(s))).toMatchObject({ ok: true });
+    const edited = (await getShift(s.id))!.shift;
+    expect(edited).toMatchObject({ id: s.id, definitionId: s.definitionId, patternId: s.patternId, occurrenceDate: s.occurrenceDate, startsAt: localInstant(addDays(future, 1), 660), capacity: 3 });
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } })).toEqual(before);
+    expect(await mutateScheduling("editShift", timeEdit(s))).toMatchObject({ ok: false, error: expect.stringMatching(/changed/) });
+    expect(await mutateScheduling("cancelShift", versionOf(edited))).toMatchObject({ ok: true });
+    expect((await getShift(s.id))!.shift).toMatchObject({ status: "CANCELLED", occurrenceDate: s.occurrenceDate });
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } })).toEqual(before);
+  }
+});
+it("5D capacity-only edits allow increases and decreases down to live staffing without touching commitments", async () => {
+  const s = (await recurringShift()).row, a = await volunteer(), b = await volunteer();
+  await db.shiftAssignment.createMany({ data: [{ shiftId: s.id, volunteerId: a.id }, { shiftId: s.id, volunteerId: b.id }] });
+  await history(s.id);
+  const before = await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } });
+  for (const capacity of [6, 3, 2]) {
+    const row = (await getShift(s.id))!.shift;
+    expect(await mutateScheduling("updateCapacity", { ...versionOf(row), capacity })).toMatchObject({ ok: true });
+    const after = (await getShift(s.id))!.shift;
+    expect(after).toMatchObject({ startsAt: s.startsAt, endsAt: s.endsAt, definitionId, occurrenceDate: s.occurrenceDate, capacity });
+    expect(after.updatedAt > row.updatedAt).toBe(true);
+  }
+  const current = (await getShift(s.id))!.shift;
+  expect(await mutateScheduling("updateCapacity", { ...versionOf(current), capacity: 1 })).toMatchObject({ ok: false, fieldErrors: { capacity: "Choose a capacity of at least 2." } });
+  expect(await mutateScheduling("updateCapacity", { ...versionOf(s), capacity: 5 })).toMatchObject({ ok: false, error: expect.stringMatching(/changed/) });
+  expect(await mutateScheduling("editShift", timeEdit(current))).toMatchObject({ ok: false, error: expect.stringMatching(/Cancel assigned volunteers/) });
+  expect(await mutateScheduling("cancelShift", versionOf(current))).toMatchObject({ ok: false, error: "Cancel assignments before canceling this shift." });
+  expect(await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } })).toEqual(before);
+});
+it("5D capacity command rejects extra fields and invalid inputs and independently enforces authorization", async () => {
+  const s = await shift();
+  for (const extra of [{ capacity: 0 }, { capacity: 1001 }, { capacity: 1.5 }, { capacity: "3" }, { capacity: 3, startsAt: new Date().toISOString() }, { capacity: 3, status: "CANCELLED" }]) {
+    expect(await mutateScheduling("updateCapacity", { ...versionOf(s), ...extra })).toMatchObject({ ok: false, fieldErrors: expect.any(Object) });
+  }
+  expect((await getShift(s.id))!.shift).toMatchObject({ capacity: s.capacity, updatedAt: s.updatedAt });
+  for (const headers of [new Headers(), sessions.VIEWER]) await request.run(headers, async () => {
+    expect(await mutateScheduling("updateCapacity", { ...versionOf(s), capacity: 3 })).toMatchObject({ ok: false, error: expect.stringMatching(/sign in|permission/) });
+    expect(await schedulingAction("updateCapacity", { ...versionOf(s), capacity: 3 })).toMatchObject({ ok: false });
+  });
+  for (const name of ["ADMIN", "COORDINATOR"]) await request.run(sessions[name], async () => {
+    expect(await mutateScheduling("updateCapacity", { ...versionOf((await getShift(s.id))!.shift), capacity: 4 })).toMatchObject({ ok: true });
+  });
+});
+it("5D all shift mutations continue to reject historical and non-scheduled shifts", async () => {
+  for (const state of ["started", "COMPLETED", "CANCELLED"] as const) {
+    const s = await shift();
+    const row = await db.shift.update({ where: { id: s.id }, data: state === "started" ? { startsAt: new Date(Date.now() - 1000) } : { status: state } });
+    const before = await history(s.id);
+    for (const command of ["editShift", "updateCapacity", "cancelShift"] as const) {
+      const data = command === "editShift" ? timeEdit(row) : command === "updateCapacity" ? { ...versionOf(row), capacity: 5 } : versionOf(row);
+      expect(await mutateScheduling(command, data)).toMatchObject({ ok: false, error: expect.stringMatching(/read-only/) });
+    }
+    expect(await db.shift.findUnique({ where: { id: s.id } })).toEqual(row);
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } })).toEqual(before);
+  }
+});
+it("5D bulk operations preserve canceled/completed assignment history and canceled occurrence identity", async () => {
+  for (const command of ["shortenPattern", "cancelPattern"] as const) {
+    const { pattern, row } = await recurringShift();
+    const earlier = await db.shift.create({ data: { definitionId, patternId: pattern.id, occurrenceDate: dateValue(addDays(future, 7)), startsAt: localInstant(addDays(future, 7), 540), endsAt: localInstant(addDays(future, 7), 720), capacity: 4 } });
+    const moved = await db.shift.update({ where: { id: row.id }, data: { startsAt: localInstant(addDays(future, 15), 540), endsAt: localInstant(addDays(future, 15), 720) } });
+    const before = await history(moved.id);
+    expect(await mutateScheduling(command, { ...versionOf(pattern), validUntil: future })).toMatchObject({ ok: true });
+    for (const s of [moved, earlier]) expect(await db.shift.findUnique({ where: { id: s.id } })).toMatchObject({ status: "CANCELLED", occurrenceDate: s.occurrenceDate });
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: row.id }, orderBy: { id: "asc" } })).toEqual(before);
+    if (command === "shortenPattern") {
+      const current = await db.shiftPattern.findUniqueOrThrow({ where: { id: pattern.id } });
+      expect(await mutateScheduling("extendPattern", { ...versionOf(current), from: future, until: addDays(future, 14) })).toMatchObject({ ok: true, message: expect.stringContaining("Created 1") });
+      expect(await db.shift.findUnique({ where: { id: row.id } })).toMatchObject({ status: "CANCELLED", occurrenceDate: row.occurrenceDate });
+      expect(await db.shift.count({ where: { patternId: pattern.id, occurrenceDate: row.occurrenceDate } })).toBe(1);
+    }
+  }
+});
+it("5D bulk operations remain all-or-nothing with mixed history and active staffing", async () => {
+  for (const command of ["shortenPattern", "cancelPattern"] as const) {
+    const { pattern, row } = await recurringShift(), v = await volunteer();
+    const historyBefore = await history(row.id);
+    const active = await db.shift.create({ data: { definitionId, patternId: pattern.id, occurrenceDate: dateValue(addDays(future, 7)), startsAt: localInstant(addDays(future, 7), 540), endsAt: localInstant(addDays(future, 7), 720), capacity: 2 } });
+    const assigned = await db.shiftAssignment.create({ data: { shiftId: active.id, volunteerId: v.id } });
+    // Both occurrences are affected, based on their actual starts.
+    await db.shift.update({ where: { id: row.id }, data: { startsAt: localInstant(addDays(future, 1), 540), endsAt: localInstant(addDays(future, 1), 720) } });
+    const shiftsBefore = await db.shift.findMany({ where: { patternId: pattern.id }, orderBy: { id: "asc" } });
+    expect(await mutateScheduling(command, { ...versionOf(pattern), validUntil: future })).toMatchObject({ ok: false, blockedShifts: [{ id: active.id, startsAt: active.startsAt.toISOString() }] });
+    expect(await db.shift.findMany({ where: { patternId: pattern.id }, orderBy: { id: "asc" } })).toEqual(shiftsBefore);
+    expect(await db.shiftPattern.findUnique({ where: { id: pattern.id } })).toEqual(pattern);
+    expect(await db.shiftAssignment.findUnique({ where: { id: assigned.id } })).toEqual(assigned);
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: row.id }, orderBy: { id: "asc" } })).toEqual(historyBefore);
+  }
+});
+it("5D shows normal controls with history, capacity-only controls with staffing, and relevant notices", async () => {
+  const s = await shift();
+  const props = { params: Promise.resolve({ id: s.id }), searchParams: Promise.resolve({}) };
+  const empty = renderToStaticMarkup(await ShiftPage(props));
+  expect(empty).toContain("Save shift changes"); expect(empty).toContain("Cancel this shift");
+  expect(empty).not.toContain("Previous assignments will be preserved"); expect(empty).not.toContain("Original scheduled times");
+  await history(s.id);
+  const historical = renderToStaticMarkup(await ShiftPage(props));
+  expect(historical).toContain("Save shift changes"); expect(historical).toContain("Cancel this shift");
+  expect(historical).toContain("Previous assignments will be preserved"); expect(historical).toContain("Original scheduled times");
+  const v = await volunteer();
+  await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: v.id } });
+  const staffed = renderToStaticMarkup(await ShiftPage(props));
+  expect(staffed).toContain("Save capacity"); expect(staffed).toContain("Cancel assigned volunteers before changing");
+  expect(staffed).not.toContain("Save shift changes"); expect(staffed).not.toContain("Cancel this shift");
+  expect(staffed).not.toContain("Previous assignments will be preserved");
+  await request.run(sessions.VIEWER, async () => {
+    const viewer = renderToStaticMarkup(await ShiftPage(props));
+    expect(viewer).toContain("Assignment history (2)");
+    for (const text of ["Save capacity", "Save shift changes", "Cancel this shift", "Assign volunteer", "Cancel assignment"]) expect(viewer).not.toContain(text);
+  });
+});
+it("5D revalidates the shift detail for capacity changes without navigation or unrelated pattern detail", async () => {
+  const s = await shift();
+  vi.mocked(revalidatePath).mockClear();
+  expect(await schedulingAction("updateCapacity", { ...versionOf(s), capacity: 4 })).toMatchObject({ ok: true });
+  expect(vi.mocked(revalidatePath).mock.calls).toEqual([["/admin"], ["/admin/scheduling"], ["/admin/scheduling/patterns"], [`/admin/scheduling/${s.id}`]]);
+  vi.mocked(revalidatePath).mockClear();
+  expect(await schedulingAction("updateCapacity", { ...versionOf(s), capacity: 5 })).toMatchObject({ ok: false });
+  expect(revalidatePath).not.toHaveBeenCalled();
+});
+it("5D rolls back time, capacity and bulk writes without changing assignment history", async () => {
+  for (const command of ["editShift", "updateCapacity", "cancelShift", "shortenPattern", "cancelPattern"] as const) {
+    const { pattern, row } = await recurringShift();
+    await db.shift.update({ where: { id: row.id }, data: { startsAt: localInstant(addDays(future, 1), 540), endsAt: localInstant(addDays(future, 1), 720) } });
+    const s = await db.shift.findUniqueOrThrow({ where: { id: row.id } });
+    const before = await history(s.id);
+    const data = command === "editShift" ? timeEdit(s) : command === "updateCapacity" ? { ...versionOf(s), capacity: 5 } : command === "cancelShift" ? versionOf(s) : { ...versionOf(pattern), validUntil: future };
+    const spy = instrument(async () => {}, async tx => { await tx.$executeRawUnsafe("SELECT 1 / 0"); });
+    try { expect(await mutateScheduling(command, data)).toMatchObject({ ok: false, error: expect.stringMatching(/Unable to save/) }); }
+    finally { spy.mockRestore(); }
+    expect(await db.shift.findUnique({ where: { id: s.id } })).toEqual(s);
+    expect(await db.shiftPattern.findUnique({ where: { id: pattern.id } })).toEqual(pattern);
+    expect(await db.shiftAssignment.findMany({ where: { shiftId: s.id }, orderBy: { id: "asc" } })).toEqual(before);
+  }
+});
+it("5D serializes capacity reductions against assignment creation and canceled-row reactivation", async () => {
+  for (const reactivation of [false, true]) {
+    const s = await shift(540, 720, 2), a = await volunteer(), b = await volunteer();
+    await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: a.id } });
+    if (reactivation) await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: b.id, status: "CANCELLED" } });
+    const data = await input(s.id, b.id);
+    const results = await race('FROM "Shift"', () => Promise.all([mutateScheduling("updateCapacity", { ...versionOf(s), capacity: 1 }), mutateAssignment("assign", data)]));
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    const current = (await getShift(s.id))!.shift;
+    expect(current.assignments.filter(row => row.status === "ASSIGNED").length).toBeLessThanOrEqual(current.capacity);
+  }
+});
+it("5D serializes capacity increases against assignments and permits a fresh retry", async () => {
+  const s = await shift(540, 720, 1), a = await volunteer(), b = await volunteer();
+  await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: a.id } });
+  const data = await input(s.id, b.id);
+  const results = await race('FROM "Shift"', () => Promise.all([mutateScheduling("updateCapacity", { ...versionOf(s), capacity: 2 }), mutateAssignment("assign", data)]));
+  expect(results[0]).toMatchObject({ ok: true }); expect(results[1]).toMatchObject({ ok: false });
+  expect(await mutateAssignment("assign", await input(s.id, b.id))).toMatchObject({ ok: true });
+});
+it("5D serializes canceled-row reactivation against time edits and individual cancellation", async () => {
+  for (const command of ["editShift", "cancelShift"] as const) {
+    const s = (await recurringShift()).row, v = await volunteer();
+    await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: v.id, status: "CANCELLED" } });
+    const data = await input(s.id, v.id);
+    const results = await race('FROM "ShiftPattern"', () => Promise.all([mutateScheduling(command, command === "editShift" ? timeEdit(s) : versionOf(s)), mutateAssignment("assign", data)]));
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    const current = (await getShift(s.id))!.shift;
+    if (current.assignments.some(row => row.status === "ASSIGNED")) expect(current).toMatchObject({ startsAt: s.startsAt, status: "SCHEDULED" });
+  }
+});
+it("5D serializes assignment cancellation against time editing without losing history", async () => {
+  const s = await shift(), v = await volunteer();
+  await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: v.id } });
+  const data = await input(s.id, v.id);
+  const results = await race('FROM "Shift"', () => Promise.all([mutateAssignment("cancel", data), mutateScheduling("editShift", timeEdit(s))]));
+  expect(results[0]).toMatchObject({ ok: true });
+  const current = (await getShift(s.id))!.shift;
+  expect(current.assignments).toHaveLength(1); expect(current.assignments[0].status).toBe("CANCELLED");
+  expect(current.startsAt).toEqual(results[1].ok ? localInstant(addDays(future, 1), 660) : s.startsAt);
+});
+it("5D serializes bulk cancellation/shortening against canceled-row reactivation", async () => {
+  for (const command of ["shortenPattern", "cancelPattern"] as const) {
+    const { pattern, row } = await recurringShift(), v = await volunteer();
+    const s = await db.shift.update({ where: { id: row.id }, data: { startsAt: localInstant(addDays(future, 1), 540), endsAt: localInstant(addDays(future, 1), 720) } });
+    await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: v.id, status: "CANCELLED" } });
+    const data = await input(s.id, v.id, true);
+    const results = await race('FROM "ShiftPattern"', () => Promise.all([mutateScheduling(command, { ...versionOf(pattern), validUntil: future }), mutateAssignment("assign", data)]));
+    expect(results.filter(result => result.ok)).toHaveLength(1);
+    const current = (await getShift(s.id))!.shift;
+    expect(current.assignments).toHaveLength(1);
+    expect(current.assignments[0].status === "ASSIGNED" ? current.status === "SCHEDULED" : current.status === "CANCELLED").toBe(true);
+  }
+});
+it("5D capacity writes retain pattern-before-shift ordering and reject concurrent stale capacity edits", async () => {
+  const { row } = await recurringShift();
+  const queries: string[] = [];
+  const spy = instrument(async sql => { queries.push(sql); });
+  try { expect(await mutateScheduling("updateCapacity", { ...versionOf(row), capacity: 3 })).toMatchObject({ ok: true }); }
+  finally { spy.mockRestore(); }
+  expect(queries.map(sql => /FROM "(\w+)"/.exec(sql)?.[1])).toEqual(["ShiftPattern", "Shift"]);
+  const s = (await getShift(row.id))!.shift;
+  const data = versionOf(s);
+  const results = await race('FROM "ShiftPattern"', () => Promise.all([mutateScheduling("updateCapacity", { ...data, capacity: 5 }), mutateScheduling("updateCapacity", { ...data, capacity: 6 })]));
+  expect(results.filter(result => result.ok)).toHaveLength(1);
+  expect(results.find(result => !result.ok)).toMatchObject({ error: expect.stringMatching(/changed/) });
+});
+
+it("5D reactivation uses the rescheduled interval and requires fresh availability acknowledgment", async () => {
+  const s = await shift(), v = await volunteer();
+  const original = await db.shiftAssignment.create({ data: { shiftId: s.id, volunteerId: v.id, status: "CANCELLED" } });
+  const stale = await input(s.id, v.id, true);
+  expect(await mutateScheduling("editShift", timeEdit(s))).toMatchObject({ ok: true });
+  expect(await mutateAssignment("assign", stale)).toMatchObject({ ok: false, error: expect.stringMatching(/changed/) });
+  expect(await mutateAssignment("assign", await input(s.id, v.id))).toMatchObject({ ok: false, availability: "OUTSIDE" });
+  expect(await db.shiftAssignment.findUnique({ where: { id: original.id } })).toEqual(original);
+  expect(await mutateAssignment("assign", await input(s.id, v.id, true))).toMatchObject({ ok: true });
+  expect(await db.shiftAssignment.findUnique({ where: { id: original.id } })).toMatchObject({ createdAt: original.createdAt, status: "ASSIGNED" });
+});
+it("5D bulk actions invalidate affected shift detail pages only on success", async () => {
+  const { pattern, row } = await recurringShift();
+  await history(row.id);
+  vi.mocked(revalidatePath).mockClear();
+  expect(await schedulingAction("cancelPattern", versionOf(pattern))).toMatchObject({ ok: true });
+  expect(vi.mocked(revalidatePath).mock.calls).toContainEqual(["/admin/scheduling/[id]", "page"]);
+  vi.mocked(revalidatePath).mockClear();
+  expect(await schedulingAction("cancelPattern", versionOf(pattern))).toMatchObject({ ok: false });
+  expect(revalidatePath).not.toHaveBeenCalled();
 });

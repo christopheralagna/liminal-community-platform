@@ -79,7 +79,7 @@ afterAll(async () => {
 });
 
 it("protects every read and mutation independently for live sessions and roles", async () => {
-  const commands: SchedulingCommand[] = ["definition", "createShift", "editShift", "cancelShift", "createPattern", "generate", "endPattern", "revisePattern", "extendPattern", "shortenPattern", "cancelPattern", "updateDefinition", "deleteDefinition"];
+  const commands: SchedulingCommand[] = ["definition", "createShift", "editShift", "updateCapacity", "cancelShift", "createPattern", "generate", "endPattern", "revisePattern", "extendPattern", "shortenPattern", "cancelPattern", "updateDefinition", "deleteDefinition"];
   pageHeaders = new Headers();
   for (const read of [() => getSchedule(future, addDays(future, 55)), getSchedulingCatalog, getPatterns, getShiftTypes, getSchedulingFilters, () => getShiftType(randomUUID()), () => getShift(randomUUID()), () => getPattern(randomUUID())]) await expect(read()).rejects.toMatchObject({ status: 401 });
   for (const headers of [new Headers(), sessions.VIEWER]) {
@@ -152,13 +152,14 @@ it("serializes concurrent generation and preserves cancellation, moves and capac
   const canceled = (await getShift(rows[1].id))!.shift;
   expect(await mutateScheduling("editShift", { ...edit, ...versionOf(canceled) })).toMatchObject({ ok: false });
 });
-it("rejects assigned, historical, completed and stale shift mutations without changing assignments", async () => {
+it("protects assigned and historical shifts while allowing edits with inactive assignment history", async () => {
   const pattern = await newPattern(), rows = await shifts(pattern.id);
   for (const status of ["ASSIGNED", "CANCELLED", "COMPLETED"] as const) {
     const row = rows[["ASSIGNED", "CANCELLED", "COMPLETED"].indexOf(status)];
     const assignment = await db.shiftAssignment.create({ data: { volunteerId, shiftId: row.id, status } });
-    expect(await mutateScheduling("cancelShift", versionOf(row))).toMatchObject({ ok: false, error: expect.stringContaining("Assignment history") });
-    expect(await mutateScheduling("editShift", { ...shiftInput(), ...versionOf(row) })).toMatchObject({ ok: false });
+    expect(await mutateScheduling("editShift", { ...shiftInput(), ...versionOf(row), date: dateOnly(row.occurrenceDate!), endDate: dateOnly(row.occurrenceDate!), start: "10:00" })).toMatchObject({ ok: status !== "ASSIGNED" });
+    const current = (await getShift(row.id))!.shift;
+    expect(await mutateScheduling("cancelShift", versionOf(current))).toMatchObject({ ok: status !== "ASSIGNED" });
     expect(await db.shiftAssignment.findUnique({ where: { id: assignment.id } })).toEqual(assignment);
   }
   const historical = await db.shift.update({ where: { id: rows[3].id }, data: { startsAt: new Date("2020-01-01T16:00:00Z"), endsAt: new Date("2020-01-01T18:00:00Z") } });
@@ -293,8 +294,8 @@ it("shortens atomically, preserves history and exceptions, and never regenerates
   expect(await mutateScheduling("extendPattern", { ...versionOf(shortened), from: future, until: addDays(future, 55) })).toMatchObject({ ok: true, message: expect.stringContaining("Created 0") });
   expect(await shifts(pattern.id)).toEqual(after);
 });
-it("blocks the entire shortening/cancellation when affected shifts have any assignment history", async () => {
-  for (const status of ["ASSIGNED", "CANCELLED", "COMPLETED"] as const) {
+it("blocks the entire shortening/cancellation when affected shifts have active assignments", async () => {
+  for (const status of ["ASSIGNED"] as const) {
     const pattern = await newPattern(), before = await shifts(pattern.id);
     const assigned = before[6];
     const assignment = await db.shiftAssignment.create({ data: { shiftId: assigned.id, volunteerId, status } });

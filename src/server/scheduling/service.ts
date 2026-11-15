@@ -5,7 +5,7 @@ import { getDatabase } from "../db";
 import { requirePermission } from "../auth/permissions";
 import { AuthorizationError } from "../auth/authorization";
 import { addDays, dateOnly, dateValue, localInstant, nextCutover, occurrenceDates, TIME_ZONE } from "./dates";
-import { definitionSchema, definitionUpdateSchema, scheduleFiltersSchema, editSchema, extensionSchema, endSchema, generationSchema, minute, patternSchema, rangeSchema, validationFields, revisionSchema, shiftSchema, versionSchema, type MutationResult } from "./validation";
+import { definitionSchema, definitionUpdateSchema, capacityUpdateSchema, scheduleFiltersSchema, editSchema, extensionSchema, endSchema, generationSchema, minute, patternSchema, rangeSchema, validationFields, revisionSchema, shiftSchema, versionSchema, type MutationResult } from "./validation";
 
 class SchedulingError extends Error {
   constructor(message: string, public fieldErrors?: Record<string, string>, public blockedShifts?: { id: string; startsAt: string }[]) { super(message); }
@@ -79,8 +79,7 @@ export async function getShiftType(id: string) {
   } });
   return definition ? { definition, canWrite: canWrite(user.role) } : null;
 }
-export function shiftRestriction(shift: { startsAt: Date; status: string; _count: { assignments: number } }) {
-  if (shift._count.assignments) return "Assignment history exists. Shift times, capacity, and cancellation are protected, including after assignments are canceled.";
+export function shiftRestriction(shift: { startsAt: Date; status: string }) {
   if (shift.status !== "SCHEDULED") return "Completed and canceled shifts are read-only. Restoration is deferred.";
   if (shift.startsAt <= new Date()) return "Shifts that have started are historical and read-only.";
   return null;
@@ -200,21 +199,31 @@ export async function mutateScheduling(command: SchedulingCommand, input: unknow
         });
       }
       case "editShift":
+      case "updateCapacity":
       case "cancelShift": {
-        const value = parse(command === "editShift" ? editSchema : versionSchema, input);
+        const value = parse(command === "editShift" ? editSchema : command === "updateCapacity" ? capacityUpdateSchema : versionSchema, input);
         return await db.$transaction(async tx => {
           // Shared pattern lock keeps revision cutover checks consistent with reschedules.
           const origin = await tx.shift.findUnique({ where: { id: value.id }, select: { patternId: true } });
           if (origin?.patternId) await lockPattern(tx, origin.patternId);
           await tx.$queryRaw`SELECT id FROM "Shift" WHERE id = ${value.id}::uuid FOR UPDATE`;
-          const shift = await tx.shift.findUnique({ where: { id: value.id }, include: { _count: { select: { assignments: true } } } });
+          const shift = await tx.shift.findUnique({ where: { id: value.id } });
           if (!shift) throw new SchedulingError("Shift no longer exists. Reload the page.");
           checkVersion(shift, value.updatedAt);
           const reason = shiftRestriction(shift);
           if (reason) throw new SchedulingError(reason);
-          if (command === "cancelShift") {
+          // Read active staffing only after the shift lock. Assignment writers
+          // hold this same lock; canceled/completed history never consumes capacity.
+          const activeAssignments = await tx.shiftAssignment.count({ where: { shiftId: shift.id, status: "ASSIGNED" } });
+          if (command === "updateCapacity") {
+            const edit = parse(capacityUpdateSchema, input);
+            if (edit.capacity < activeAssignments) throw new SchedulingError("Capacity cannot be lower than the number of assigned volunteers.", { capacity: `Choose a capacity of at least ${activeAssignments}.` });
+            await tx.shift.update({ where: { id: value.id }, data: { capacity: edit.capacity, updatedAt: version(shift.updatedAt) } });
+          } else if (command === "cancelShift") {
+            if (activeAssignments) throw new SchedulingError("Cancel assignments before canceling this shift.");
             await tx.shift.update({ where: { id: value.id }, data: { status: "CANCELLED", updatedAt: version(shift.updatedAt) } });
           } else {
+            if (activeAssignments) throw new SchedulingError("Cancel assigned volunteers before changing this shift’s time. Use the capacity control to change capacity only.");
             const edit = parse(editSchema, input);
             const startsAt = localInstant(edit.date, minute(edit.start));
             if (startsAt <= new Date()) throw new SchedulingError("Rescheduled shifts must start in the future.", { date: "Choose a future date and time." });
@@ -265,9 +274,10 @@ export async function mutateScheduling(command: SchedulingCommand, input: unknow
           const now = new Date();
           const boundary = until ? localInstant(addDays(until, 1), 0) : now;
           const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Shift" WHERE "patternId" = ${pattern.id}::uuid AND status = 'SCHEDULED' AND "startsAt" > ${now} AND "startsAt" >= ${boundary} ORDER BY id FOR UPDATE`;
-          const affected = await tx.shift.findMany({ where: { id: { in: locked.map(row => row.id) }, status: "SCHEDULED", startsAt: { gt: new Date() } }, include: { _count: { select: { assignments: true } } }, orderBy: { startsAt: "asc" } });
+          const affected = await tx.shift.findMany({ where: { id: { in: locked.map(row => row.id) }, status: "SCHEDULED", startsAt: { gt: new Date() } }, include: { _count: { select: { assignments: { where: { status: "ASSIGNED" } } } } }, orderBy: { startsAt: "asc" } });
+          // Here the filtered count means active staffing, not all assignment history.
           const blocked = affected.filter(shift => shift._count.assignments > 0);
-          if (blocked.length) throw new SchedulingError("No changes were saved. These future shifts have assignment history and need attention before changing this schedule.", undefined, blocked.map(shift => ({ id: shift.id, startsAt: shift.startsAt.toISOString() })));
+          if (blocked.length) throw new SchedulingError("No changes were saved. Cancel assigned volunteers on these future shifts before changing this schedule.", undefined, blocked.map(shift => ({ id: shift.id, startsAt: shift.startsAt.toISOString() })));
           await tx.shift.updateMany({ where: { id: { in: affected.map(shift => shift.id) } }, data: { status: "CANCELLED", updatedAt: new Date(Math.max(Date.now(), ...affected.map(shift => shift.updatedAt.getTime() + 1))) } });
           await tx.shiftPattern.update({ where: { id: pattern.id }, data: { ...(until ? { validUntil: dateValue(until) } : { isActive: false }), updatedAt: version(pattern.updatedAt) } });
           return { ok: true, id: pattern.id, message: `${until ? "Repeating schedule shortened" : "Repeating schedule canceled"}. ${affected.length} future shift(s) canceled. Past shifts and assignment history were preserved.` };

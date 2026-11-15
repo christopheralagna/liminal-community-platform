@@ -2,6 +2,8 @@
 
 Implemented November 14, 2026. No deployment, database reset, migration, dependency upgrade, or public-site change was made.
 
+The history-based edit/cancellation restrictions below describe the Phase 5C checkpoint. Phase 5D supersedes them; see [scheduling flexibility](phase-5d-scheduling-flexibility.md) for the current policy.
+
 ## Coordinator workflow
 
 Open `/admin/scheduling/[id]`. The existing shift detail page now shows the required role, actual Phoenix interval, capacity, ASSIGNED staffing count, and remaining spots. Assigned volunteers link to their profiles. ADMIN and COORDINATOR can assign and cancel on future SCHEDULED shifts; VIEWER sees staffing and history without mutation controls. Completed/canceled shifts and assignments on started shifts are read-only.

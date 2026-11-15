@@ -79,8 +79,8 @@ function DateField({ label, name, value, min }: { label: string; name: string; v
 function TimeField({ label, name, value }: { label: string; name: string; value: string }) {
   return <label className="block">{label}<input className={control} name={name} type="time" required defaultValue={value} /><FieldError name={name} /></label>;
 }
-function Capacity({ value }: { value: number }) {
-  return <label className="block">Capacity<input className={control} name="capacity" type="number" required min={1} max={1000} defaultValue={value} /><FieldError name="capacity" /></label>;
+function Capacity({ value, min = 1 }: { value: number; min?: number }) {
+  return <label className="block">Capacity<input className={control} name="capacity" type="number" required min={min} max={1000} defaultValue={value} /><FieldError name="capacity" /></label>;
 }
 function DefinitionSelect({ definitions, roles }: { definitions: Definition[]; roles: { id: string; name: string }[] }) {
   const [roleId, setRoleId] = useState("");
@@ -119,7 +119,7 @@ export function DefinitionEditor({ definition, canWrite }: { definition: { id: s
   </>;
 }
 export type ShiftFields = { date: string; start: string; endDate: string; end: string; capacity: number };
-export function ShiftForm({ id, updatedAt, definitions = [], roles = [], initial }: { id: string; updatedAt?: string; definitions?: Definition[]; roles?: { id: string; name: string }[]; initial: ShiftFields }) {
+export function ShiftForm({ id, updatedAt, definitions = [], roles = [], initial, hasHistory = false }: { id: string; updatedAt?: string; definitions?: Definition[]; roles?: { id: string; name: string }[]; initial: ShiftFields; hasHistory?: boolean }) {
   const [recordId] = useState(id);
   return <MutationForm command={updatedAt ? "editShift" : "createShift"} destination="shift" label={updatedAt ? "Save shift changes" : "Create shift"} build={data => ({
     id: recordId, ...(updatedAt ? { updatedAt } : { definitionId: text(data, "definitionId"), roleId: text(data, "roleId") }), date: text(data, "date"), start: text(data, "start"), endDate: text(data, "endDate"), end: text(data, "end"), capacity: number(data, "capacity"),
@@ -128,11 +128,20 @@ export function ShiftForm({ id, updatedAt, definitions = [], roles = [], initial
     <p className="text-cream-300">Times are local to America/Phoenix. For an overnight shift, explicitly choose the next end date. Maximum duration: 24 hours.</p>
     <div className="grid gap-5 sm:grid-cols-2"><DateField label="Start date" name="date" value={initial.date} /><TimeField label="Start time" name="start" value={initial.start} /><DateField label="End date" name="endDate" value={initial.endDate} /><TimeField label="End time" name="end" value={initial.end} /></div>
     <Capacity value={initial.capacity} />
+    {updatedAt && hasHistory && <p className="text-peach-100">Previous assignments will be preserved. They will refer to this shift’s updated schedule; their original scheduled times are not retained.</p>}
     {updatedAt && <p className="text-sm text-cream-300">Only this shift changes. Its shift type, repeating schedule, and other shifts remain unchanged.</p>}
   </MutationForm>;
 }
-export function CancelShift({ id, updatedAt }: { id: string; updatedAt: string }) {
-  return <MutationForm command="cancelShift" build={() => ({ id, updatedAt })} label="Cancel this shift"><p>Only this shift is canceled. It stays on record and will not be added again when the schedule is extended. Cancellation cannot be undone here.</p><label className="flex gap-3"><input type="checkbox" name="confirm" required />Cancel this shift</label></MutationForm>;
+export function CapacityForm({ id, updatedAt, capacity, activeAssignments }: { id: string; updatedAt: string; capacity: number; activeAssignments: number }) {
+  return <MutationForm command="updateCapacity" label="Save capacity" build={data => ({ id, updatedAt, capacity: number(data, "capacity") })}>
+    <h2 className="text-xl font-semibold">Change capacity</h2>
+    <p>Capacity cannot be lower than the number of assigned volunteers. Currently assigned: {activeAssignments}.</p>
+    <Capacity value={capacity} min={Math.max(1, activeAssignments)} />
+    <p>Only capacity changes. Shift times and assignments stay unchanged.</p>
+  </MutationForm>;
+}
+export function CancelShift({ id, updatedAt, hasHistory = false }: { id: string; updatedAt: string; hasHistory?: boolean }) {
+  return <MutationForm command="cancelShift" build={() => ({ id, updatedAt })} label="Cancel this shift"><p>Only this shift is canceled. It stays on record and will not be added again when the schedule is extended. Cancellation cannot be undone here.</p>{hasHistory && <p>Previous assignment history will be preserved.</p>}<label className="flex gap-3"><input type="checkbox" name="confirm" required />Cancel this shift</label></MutationForm>;
 }
 export type PatternFields = { definitionId: string; dayOfWeek: number; start: string; durationMinutes: number; capacity: number; validFrom: string; validUntil: string };
 export function PatternForm({ id, definitions = [], roles = [], initial }: { id: string; definitions?: Definition[]; roles?: { id: string; name: string }[]; initial: PatternFields }) {
@@ -164,12 +173,12 @@ export function PatternOperations({ id, updatedAt, validFrom, validUntil, latest
     {active && <section><h2 className="mt-8 text-xl font-semibold">Shorten repeating schedule</h2>
       <MutationForm command="shortenPattern" label="Shorten schedule" build={data => ({ id, updatedAt, validUntil: text(data, "validUntil") })}>
         <DateField label="Repeats until" name="validUntil" value={validUntil || latest || validFrom} min={validFrom} />
-        <p>Future scheduled shifts starting after this date will be canceled. Past and completed shifts stay unchanged. If any affected shift has assignment history, nothing will change and those shifts will be listed for review.</p>
+        <p>Future scheduled shifts starting after this date will be canceled. Past and completed shifts stay unchanged. If any affected shift has assigned volunteers, nothing will change and those shifts will be listed for review.</p>
       </MutationForm>
     </section>}
     <section><h2 className="mt-8 text-xl font-semibold">Cancel repeating schedule</h2>
       <MutationForm command="cancelPattern" label="Cancel repeating schedule" build={() => ({ id, updatedAt })}>
-        <p>Stop repeating and cancel all remaining future scheduled shifts. Past shifts stay on record. Assignment history blocks the entire operation. Canceled shifts cannot be restored here.</p>
+        <p>Stop repeating and cancel all remaining future scheduled shifts. Past shifts stay on record. Assigned volunteers on an affected shift block the entire operation. Cancel their assignments first. Canceled shifts cannot be restored here.</p>
         <label className="flex gap-3"><input type="checkbox" name="confirm" required />Cancel this repeating schedule and its remaining future shifts</label>
       </MutationForm>
     </section>
