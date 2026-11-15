@@ -4,6 +4,7 @@ import type { Prisma } from "../../generated/prisma/client";
 import { getDatabase } from "../db";
 import { requirePermission } from "../auth/permissions";
 import { AuthorizationError } from "../auth/authorization";
+import { logUnexpectedFailure } from "../diagnostics";
 import { availabilityMessages, evaluateAvailability } from "./availability";
 import { assignSchema, cancelAssignmentSchema, type AssignmentCandidate, type AssignmentCommand, type AssignmentResult } from "./assignment-validation";
 import { validationFields } from "./validation";
@@ -114,6 +115,7 @@ export async function mutateAssignment(command: AssignmentCommand, input: unknow
   } catch (error) {
     if (error instanceof AuthorizationError) return { ok: false, error: error.status === 401 ? "Please sign in before saving." : "You do not have permission to manage assignments." };
     if (error instanceof AssignmentError) return { ok: false, error: error.message };
-    return { ok: false, error: "Unable to save the assignment. Check the shift before trying again; your change may already have saved." };
+    const reference = logUnexpectedFailure("assignments.mutate", error);
+    return { ok: false, error: `Unable to save the assignment. Check the shift before trying again; your change may already have saved. Reference: ${reference}` };
   }
 }

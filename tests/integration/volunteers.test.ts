@@ -14,13 +14,14 @@ import { DEFAULT_TIME_ZONE, type VolunteerInput } from "../../src/server/volunte
 import { VolunteerEditor } from "../../src/components/admin/VolunteerEditor";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Prisma } from "../../src/generated/prisma/client";
+import { revalidatePath } from "next/cache";
 
 let pageHeaders = new Headers();
 vi.mock("next/headers", () => ({ headers: async () => pageHeaders }));
 vi.mock("../../src/server/db", () => ({ getDatabase: () => db }));
 vi.mock("../../src/server/auth/index", () => ({ getAuth: () => auth }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }), notFound: () => { throw new Error("NOT_FOUND"); }, redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); } }));
+vi.mock("next/navigation", () => ({ RedirectType: { replace: "replace" }, unstable_rethrow: () => {}, useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }), notFound: () => { throw new Error("NOT_FOUND"); }, redirect: (path: string) => { throw new Error(`REDIRECT:${path}`); } }));
 const prefix = `volunteer-test-${randomUUID()}`;
 const env = { BETTER_AUTH_URL: "http://localhost:3000", BETTER_AUTH_SECRET: randomBytes(48).toString("base64url"), NODE_ENV: "test" };
 let db: ReturnType<typeof createDatabaseClient>;
@@ -87,7 +88,7 @@ it("rejects missing sessions and VIEWER direct service/action writes before vali
 it("creates profiles without accounts as ADMIN, and rejects repeated creation", async () => {
   pageHeaders = sessions.ADMIN;
   current = { ...input(), roleIds, availability: [window(), window("14:00", "17:00")] };
-  expect(await saveVolunteerAction("create", current)).toEqual({ ok: true, id: current.id });
+  await expect(saveVolunteerAction("create", current)).rejects.toThrow(`REDIRECT:/admin/volunteers/${current.id}?saved=1`);
   const row = await db.volunteerProfile.findUniqueOrThrow({ where: { id: current.id }, include: { roles: true, availability: true } });
   expect(row.userId).toBeNull(); expect(row.roles).toHaveLength(2); expect(row.availability).toHaveLength(2);
   expect(row.foodHandlerExpiresOn).toBeNull();
@@ -197,4 +198,64 @@ it("rejects simultaneous stale edits and prevents cross-volunteer availability I
   expect(row.volunteerId).toBe(winner.id);
   expect(row.startMinute).toBe(winner === left ? 540 : 600);
   expect(await db.volunteerProfile.count({ where: { id: { in: [left.id, right.id] } } })).toBe(1);
+});
+
+it("redirects updates after commit and revalidates only successful saves", async () => {
+  pageHeaders = sessions.COORDINATOR;
+  const value = input();
+  await saveVolunteer("create", value);
+  const updated = { ...await fresh(value), displayName: `${prefix} redirect edit` };
+  vi.mocked(revalidatePath).mockClear();
+  await expect(saveVolunteerAction("update", updated)).rejects.toThrow(`REDIRECT:/admin/volunteers/${value.id}?saved=1`);
+  expect(vi.mocked(revalidatePath).mock.calls.map(call => call[0])).toEqual(["/admin", "/admin/volunteers", `/admin/volunteers/${value.id}`]);
+  expect((await db.volunteerProfile.findUniqueOrThrow({ where: { id: value.id } })).displayName).toBe(updated.displayName);
+  vi.mocked(revalidatePath).mockClear();
+  expect(await saveVolunteerAction("update", updated)).toMatchObject({ ok: false });
+  expect(revalidatePath).not.toHaveBeenCalled();
+});
+
+it("reports a committed save when revalidation fails, without replaying the mutation or leaking errors", async () => {
+  pageHeaders = sessions.ADMIN;
+  const value = input();
+  const output = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.mocked(revalidatePath).mockImplementationOnce(() => { throw new Error("private connection URL and volunteer details"); });
+  try {
+    const result = await saveVolunteerAction("create", value);
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("was saved") });
+    const event = JSON.parse(output.mock.calls[0][0]);
+    expect(event.operation).toBe("volunteers.response");
+    expect(JSON.stringify(result)).toContain(event.reference);
+    expect(JSON.stringify([result, output.mock.calls])).not.toMatch(/private connection|volunteer details/);
+    expect(await db.volunteerProfile.count({ where: { id: value.id } })).toBe(1);
+    expect(await saveVolunteer("create", value)).toMatchObject({ ok: false });
+    expect(await db.volunteerProfile.count({ where: { id: value.id } })).toBe(1);
+  } finally { output.mockRestore(); }
+});
+
+it("logs unexpected service failures with a matching reference, but not validation or access denials", async () => {
+  const output = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    pageHeaders = sessions.VIEWER;
+    await saveVolunteer("create", input());
+    pageHeaders = sessions.ADMIN;
+    await saveVolunteer("create", { ...input(), displayName: "" });
+    expect(output).not.toHaveBeenCalled();
+    const failure = vi.spyOn(db, "$transaction").mockRejectedValueOnce(Object.assign(new Error("private-token-and-name"), { code: "P2028" }));
+    try {
+      const result = await saveVolunteer("create", input());
+      const event = JSON.parse(output.mock.calls[0][0]);
+      expect(event).toMatchObject({ operation: "volunteers.create", classification: "database", code: "P2028" });
+      expect(JSON.stringify(result)).toContain(event.reference);
+      expect(JSON.stringify([result, output.mock.calls])).not.toContain("private-token-and-name");
+    } finally { failure.mockRestore(); }
+  } finally { output.mockRestore(); }
+});
+
+it("prevents a native GET or editable submission before the volunteer form hydrates", async () => {
+  pageHeaders = sessions.ADMIN;
+  const html = renderToStaticMarkup(await VolunteerEditor({}));
+  expect(html).toContain('method="post"');
+  expect(html).toContain('aria-busy="true"');
+  expect(html).toMatch(/<fieldset disabled=""/);
+  expect(html).toContain('name="displayName"');
 });

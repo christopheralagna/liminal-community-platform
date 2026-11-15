@@ -214,7 +214,7 @@ it("rolls back pattern creation and revision on SQL failure with safe feedback",
   const forceFailure = () => vi.spyOn(db, "$transaction").mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => original(async tx => { await callback(tx); await tx.$executeRawUnsafe("SELECT 1 / 0"); })) as typeof db.$transaction);
   const newInput = patternInput();
   let failure = forceFailure();
-  try { expect(await mutateScheduling("createPattern", newInput)).toEqual({ ok: false, error: "Unable to save scheduling changes. Please try again or reload the page." }); } finally { failure.mockRestore(); }
+  try { expect(await mutateScheduling("createPattern", newInput)).toMatchObject({ ok: false, error: expect.stringMatching(/^Unable to save scheduling changes\..*Reference: [0-9a-f-]{36}$/) }); } finally { failure.mockRestore(); }
   expect(await db.shiftPattern.findUnique({ where: { id: newInput.id } })).toBeNull();
   expect(await shifts(newInput.id)).toHaveLength(0);
   const successor = { ...patternInput(), validFrom: addDays(future, 100) };

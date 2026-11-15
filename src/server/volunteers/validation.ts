@@ -39,4 +39,22 @@ export const volunteerSchema = z.object({
   });
 });
 export type VolunteerInput = z.infer<typeof volunteerSchema>;
-export type SaveResult = { ok: true; id: string } | { ok: false; error: string; issues?: string[] };
+export function volunteerFieldLabel(field: string) {
+  const labels: Record<string, string> = { displayName: "Name", email: "Email", status: "Status", roleIds: "Operational roles",
+    foodHandlerIssuedOn: "Certificate issuance", foodHandlerExpiresOn: "Certificate expiration", id: "Volunteer record", updatedAt: "Record version",
+    availability: "Weekly availability", start: "Start time", end: "End time", validFrom: "Effective from", validUntil: "Effective until", timeZone: "Timezone", dayOfWeek: "Weekday" };
+  const parts = field.split(".");
+  if (parts[0] === "availability" && /^\d+$/.test(parts[1] ?? "")) return `Availability window ${Number(parts[1]) + 1}: ${labels[parts[2]] || "Window"}`;
+  return labels[field] || "Volunteer information";
+}
+export function volunteerFieldErrors(error: z.ZodError): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const issue of error.issues) {
+    // Cross-window errors target the offending window's start control.
+    const path = issue.path[0] === "availability" && typeof issue.path[1] === "number"
+      ? `availability.${issue.path[1]}.${String(issue.path[2] || "start")}` : String(issue.path[0] || "form");
+    fields[path] ??= issue.message;
+  }
+  return fields;
+}
+export type SaveResult = { ok: true; id: string } | { ok: false; error: string; issues?: string[]; fieldErrors?: Record<string, string> };

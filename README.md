@@ -1,6 +1,6 @@
 # Liminal Community Center & Cafe — Digital Historical Archive & Management Platform
 
-> **Current status — November 9, 2026:** Phase 4 **Stages B, C, and D** and **Phase 5A volunteer management** are implemented; Phase 5B scheduling remains deferred. See the [volunteer management guide](docs/phase-5a-volunteers.md). The public website is unchanged. See [backend setup and validation](docs/phase-4-backend.md), [B1 compatibility report](docs/phase-4-b1.md), and [project status](docs/project-status.md). Older public feature descriptions below predate the content refinement; see the [refinement report](docs/phase-3-content-refinement.md) for current public content.
+> **Current status — November 14, 2026:** Phases 4–6 are implemented, including assignments and the operational dashboard. Approved Phase 7 remediation is implemented and approved for commit: see [changes, RSC evidence, and validation](docs/phase-7-readiness.md) and the [production operations runbook](docs/production-runbook.md). The intermittent RSC issue remains unresolved; Phase 8 deployment is pending. Public historical images will be reviewed separately before deployment. Older checkpoint and public feature descriptions below are historical; consult the phase guides and [content refinement report](docs/phase-3-content-refinement.md) for current behavior.
 
 ## Backend quickstart (synthetic demonstration data only)
 

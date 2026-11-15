@@ -122,6 +122,15 @@ describe("real Better Auth / PostgreSQL authentication and authorization", () =>
     expect(await wrong.json()).toEqual(await unknown.json());
   });
 
+  it("propagates unexpected auth adapter failures without the router's raw console fallback", async () => {
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failure = vi.spyOn(db.user, "findFirst").mockRejectedValueOnce(new Error("private-auth-adapter-value"));
+    try {
+      await expect(request("sign-in/email", { email: users.VIEWER.email, password })).rejects.toThrow("private-auth-adapter-value");
+      expect(output).not.toHaveBeenCalled();
+    } finally { failure.mockRestore(); output.mockRestore(); }
+  });
+
   it("rejects public signup at the library endpoint, including privileged input", async () => {
     const email = `${prefix}-attack@example.invalid`;
     const response = await request("sign-up/email", { email, password, name: "Attack", role: "ADMIN", isActive: true });
@@ -260,13 +269,17 @@ describe("real Better Auth / PostgreSQL authentication and authorization", () =>
     // An empty read result is distinct from an outage; no database records are removed.
     expect(await readAdminPage(async () => [])).toEqual({ data: [], error: null });
     pageHeaders = authenticated((await login()).cookie);
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
     const failure = vi.spyOn(db.volunteerProfile, "findMany").mockRejectedValueOnce(new Error("private database details"));
     try {
       const result = await readAdminPage(getVolunteers);
       expect(result.data).toBeNull();
       expect(result.error).toContain("temporarily unavailable");
-      expect(JSON.stringify(result)).not.toContain("private database details");
-    } finally { failure.mockRestore(); }
+      const event = JSON.parse(output.mock.calls[0][0]);
+      expect(event.operation).toBe("admin.read");
+      expect(result.error).toContain(event.reference);
+      expect(JSON.stringify([result, output.mock.calls])).not.toContain("private database details");
+    } finally { failure.mockRestore(); output.mockRestore(); }
     const { AuthorizationError } = await import("../../src/server/auth/authorization");
     expect((await readAdminPage(async () => { throw new AuthorizationError(403); })).error).toContain("permission");
   });

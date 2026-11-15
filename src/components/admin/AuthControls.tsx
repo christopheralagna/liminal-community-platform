@@ -3,6 +3,11 @@
 import { useState, type FormEvent } from "react";
 
 const button = "min-h-11 rounded-md bg-terracotta-600 px-5 py-3 font-semibold text-cream-50 hover:bg-terracotta-500 disabled:opacity-60";
+async function failureReference(response: Response) {
+  if (response.status < 500) return "";
+  const body = await response.json().catch(() => null);
+  return typeof body?.reference === "string" && /^[0-9a-f-]{36}$/.test(body.reference) ? ` Reference: ${body.reference}` : "";
+}
 
 export function LoginForm() {
   const [pending, setPending] = useState(false);
@@ -20,7 +25,7 @@ export function LoginForm() {
         body: JSON.stringify({ email: String(values.get("email")).trim(), password: values.get("password") }),
       });
       if (!response.ok) {
-        setError(response.status === 429 ? "Too many sign-in attempts. Please wait a minute and try again." : response.status >= 500 ? "Sign-in is temporarily unavailable. Please try again later." : "Unable to sign in. Check your email and password.");
+        setError((response.status === 429 ? "Too many sign-in attempts. Please wait a minute and try again." : response.status >= 500 ? "Sign-in is temporarily unavailable. Please try again later." : "Unable to sign in. Check your email and password.") + await failureReference(response));
         setPending(false); return;
       }
       // A full navigation discards previously rendered authenticated content.
@@ -42,7 +47,7 @@ export function LogoutButton() {
     setPending(true); setError("");
     try {
       const response = await fetch("/api/auth/sign-out", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (!response.ok) throw new Error();
+      if (!response.ok) { setError("Unable to sign out. Please try again." + await failureReference(response)); setPending(false); return; }
       window.location.replace("/admin/login");
     } catch { setError("Unable to sign out. Please try again."); setPending(false); }
   }

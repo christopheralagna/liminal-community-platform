@@ -14,7 +14,7 @@ const headingDate = (date: string) => new Intl.DateTimeFormat("en-US", { timeZon
 export default async function SchedulingPage({ searchParams }: { searchParams?: Promise<Query> }) {
   const parsed = scheduleQuerySchema.safeParse(await searchParams || {});
   if (!parsed.success) {
-    const access = await readAdminPage(getSchedulingFilters);
+    const access = await readAdminPage(getSchedulingFilters, "scheduling.read");
     return <><SchedulingNav /><Notice>{access.error || "Check the viewing dates, filter selections, and page number in the URL."}</Notice></>;
   }
   const query = parsed.data;
@@ -24,7 +24,7 @@ export default async function SchedulingPage({ searchParams }: { searchParams?: 
   const until = list ? query.until || addDays(date, 55) : addDays(from, 6);
   const page = Number(query.page || "1");
   const filters = { definitionIds: selectedIds(query.definitionId), roleIds: selectedIds(query.roleId), showCanceled: query.canceled === "1", page };
-  const [result, catalog] = await Promise.all([readAdminPage(() => getSchedule(from, until, filters)), readAdminPage(getSchedulingFilters)]);
+  const [result, catalog] = await Promise.all([readAdminPage(() => getSchedule(from, until, filters), "scheduling.read"), readAdminPage(getSchedulingFilters, "scheduling.read")]);
   function href(changes: Partial<Omit<Query, "roleId" | "definitionId">>, clear = false) {
     const params = new URLSearchParams({ view: list ? "list" : "week", date, from, until, canceled: filters.showCanceled ? "1" : "0", ...changes });
     if (!clear) {

@@ -7,7 +7,7 @@ import { scheduleTime } from "@/components/admin/SchedulingDisplay";
 import { phoenixDate } from "@/server/scheduling/dates";
 
 export default async function DashboardPage() {
-  const result = await readAdminPage(getDashboard);
+  const result = await readAdminPage(getDashboard, "dashboard.read");
   const data = result.data;
   const scheduleHref = data ? `/admin/scheduling?${new URLSearchParams({ view: "list", from: phoenixDate(data.windowStart), until: phoenixDate(data.windowEnd), canceled: "0" })}` : "/admin/scheduling";
   return <>

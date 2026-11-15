@@ -5,7 +5,7 @@ import { readAdminPage } from "@/server/admin/page-access";
 import { Notice } from "@/components/admin/Notice";
 import { SchedulingNav, repeatingTime, weekdays } from "@/components/admin/SchedulingDisplay";
 export default async function PatternsPage() {
-  const result = await readAdminPage(getPatterns);
+  const result = await readAdminPage(getPatterns, "scheduling.read");
   return <><SchedulingNav /><h1 className="text-3xl font-semibold">Repeating schedules</h1><p className="mt-3 text-cream-300">Manage repeating shifts and add upcoming dates to the calendar.</p>
     {!result.data ? <div className="mt-6"><Notice>{result.error}</Notice></div> : <>
       {result.data.canWrite && <Link className="my-6 inline-block rounded border border-charcoal-500 px-4 py-3" href="/admin/scheduling/patterns/new">Create repeating schedule</Link>}

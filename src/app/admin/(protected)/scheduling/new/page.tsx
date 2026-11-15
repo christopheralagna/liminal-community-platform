@@ -6,7 +6,7 @@ import { Notice } from "@/components/admin/Notice";
 import { SchedulingNav } from "@/components/admin/SchedulingDisplay";
 import { ShiftForm } from "@/components/admin/SchedulingForms";
 export default async function NewShiftPage() {
-  const result = await readAdminPage(getSchedulingCatalog);
+  const result = await readAdminPage(getSchedulingCatalog, "scheduling.read");
   if (!result.data) return <Notice>{result.error}</Notice>;
   if (!result.data.canWrite) return <Notice>You do not have permission to create shifts.</Notice>;
   const today = phoenixDate();

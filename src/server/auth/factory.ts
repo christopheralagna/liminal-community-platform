@@ -30,6 +30,10 @@ export function createAuth(database: Database, env: Record<string, string | unde
     rateLimit: { enabled: true, storage: "memory", window: 60, max: 100,
       customRules: { "/sign-in/email": { window: 60, max: 5 } } },
     logger: { disabled: true }, // Never serialize adapter errors or credential-bearing request data.
+    // Better Call otherwise prints non-API exceptions directly, bypassing logger.
+    // Expected API errors retain their HTTP responses; unexpected failures reach
+    // our sanitized route/page boundary instead of the router's console fallback.
+    onAPIError: { throw: true },
     databaseHooks: {
       session: { create: { before: async (session) => {
         const user = await database.user.findUnique({ where: { id: session.userId }, select: { isActive: true } });

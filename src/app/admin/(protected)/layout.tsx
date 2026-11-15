@@ -5,7 +5,7 @@ import { LogoutButton } from "@/components/admin/AuthControls";
 import { Notice } from "@/components/admin/Notice";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const result = await readAdminPage(requireUser);
+  const result = await readAdminPage(requireUser, "auth.read");
   if (result.error || !result.data) return <main id="admin-content" className="mx-auto max-w-3xl p-6"><Notice>{result.error}</Notice><Link href="/admin/login" className="mt-6 inline-block underline">Return to sign in</Link></main>;
   const user = result.data;
   return <>

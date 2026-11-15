@@ -3,7 +3,8 @@ import { z } from "zod";
 import { getDatabase } from "../db";
 import { requirePermission } from "../auth/permissions";
 import { AuthorizationError } from "../auth/authorization";
-import { volunteerSchema, toMinute, type SaveResult } from "./validation";
+import { logUnexpectedFailure } from "../diagnostics";
+import { volunteerSchema, volunteerFieldErrors, volunteerFieldLabel, toMinute, type SaveResult } from "./validation";
 
 class VolunteerError extends Error {}
 const dateValue = (value: string) => value ? new Date(`${value}T00:00:00.000Z`) : null;
@@ -30,7 +31,11 @@ export async function saveVolunteer(mode: "create" | "update", input: unknown): 
   try {
     await requirePermission("volunteers:write");
     const parsed = volunteerSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "Please correct the following fields.", issues: parsed.error.issues.map(issue => `${issue.path[0] === "availability" ? `Availability window ${typeof issue.path[1] === "number" ? issue.path[1] + 1 : ""}` : ({ displayName: "Name", email: "Email", status: "Status", roleIds: "Operational roles", foodHandlerIssuedOn: "Certificate issuance", foodHandlerExpiresOn: "Certificate expiration", id: "Volunteer record", updatedAt: "Record version" } as Record<string, string>)[String(issue.path[0])] || "Volunteer information"}: ${issue.message}`) };
+    if (!parsed.success) {
+      const fieldErrors = volunteerFieldErrors(parsed.error);
+      return { ok: false, error: "Please correct the following fields.", fieldErrors,
+        issues: Object.entries(fieldErrors).map(([field, message]) => `${volunteerFieldLabel(field)}: ${message}`) };
+    }
     const value = parsed.data;
     if (mode !== "create" && mode !== "update") throw new VolunteerError("Invalid save request.");
     if (mode === "update" && !value.updatedAt) throw new VolunteerError("Reload this volunteer before saving.");
@@ -72,6 +77,7 @@ export async function saveVolunteer(mode: "create" | "update", input: unknown): 
   } catch (error) {
     if (error instanceof AuthorizationError) return { ok: false, error: error.status === 401 ? "Please sign in before saving." : "You do not have permission to change volunteer information." };
     if (error instanceof VolunteerError) return { ok: false, error: error.message };
-    return { ok: false, error: "Unable to save volunteer information. Please try again. If the problem continues, reload the page." };
+    const reference = logUnexpectedFailure(mode === "create" ? "volunteers.create" : "volunteers.update", error);
+    return { ok: false, error: `Unable to save volunteer information. Check the record before trying again; your change may already have saved. Reference: ${reference}` };
   }
 }

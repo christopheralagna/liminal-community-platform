@@ -8,7 +8,7 @@ import { Notice } from "./Notice";
 import { VolunteerForm } from "./VolunteerForm";
 
 export async function VolunteerEditor({ id, saved = false }: { id?: string; saved?: boolean }) {
-  const result = await readAdminPage(() => getVolunteerEditor(id));
+  const result = await readAdminPage(() => getVolunteerEditor(id), "volunteers.read");
   if (result.error) return <Notice>{result.error}</Notice>;
   if (!result.data) notFound();
   const { volunteer, roles, canWrite } = result.data;

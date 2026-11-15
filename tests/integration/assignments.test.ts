@@ -56,6 +56,27 @@ async function profileInput(id: string) {
 }
 const versionOf = (row: { id: string; updatedAt: Date }) => ({ id: row.id, updatedAt: row.updatedAt.toISOString() });
 
+it("preserves committed scheduling and assignment writes when response revalidation fails", async () => {
+  pageHeaders = sessions.ADMIN;
+  const s = await shift(), v = await volunteer();
+  const data = await input(s.id, v.id);
+  const output = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    vi.mocked(revalidatePath).mockImplementationOnce(() => { throw new Error("private-cookie-and-url"); });
+    const assignmentResult = await assignmentAction("assign", data);
+    expect(assignmentResult).toMatchObject({ ok: false, error: expect.stringContaining("was saved") });
+    expect(await db.shiftAssignment.count({ where: { shiftId: s.id, volunteerId: v.id, status: "ASSIGNED" } })).toBe(1);
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ operation: "assignments.response" });
+    expect(JSON.stringify(assignmentResult)).toContain(JSON.parse(output.mock.calls[0][0]).reference);
+    vi.mocked(revalidatePath).mockImplementationOnce(() => { throw new Error("private-cookie-and-url"); });
+    const schedulingResult = await schedulingAction("updateCapacity", { ...versionOf(s), capacity: 3 });
+    expect(schedulingResult).toMatchObject({ ok: false, error: expect.stringContaining("was saved") });
+    expect((await db.shift.findUniqueOrThrow({ where: { id: s.id } })).capacity).toBe(3);
+    expect(JSON.parse(output.mock.calls[1][0])).toMatchObject({ operation: "scheduling.response" });
+    expect(JSON.stringify([assignmentResult, schedulingResult, output.mock.calls])).not.toContain("private-cookie-and-url");
+  } finally { output.mockRestore(); }
+});
+
 // Instrument only transaction entry/query timing. All reads, locks and writes
 // still execute against PostgreSQL on separate pooled transaction connections.
 function instrument(hook: (sql: string) => Promise<void>, after?: (tx: Prisma.TransactionClient) => Promise<void>) {

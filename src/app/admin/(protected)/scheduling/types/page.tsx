@@ -5,7 +5,7 @@ import { SchedulingNav } from "@/components/admin/SchedulingDisplay";
 import { Notice } from "@/components/admin/Notice";
 export default async function ShiftTypesPage({ searchParams }: { searchParams?: Promise<{ deleted?: string }> }) {
   const query = await searchParams;
-  const result = await readAdminPage(getShiftTypes);
+  const result = await readAdminPage(getShiftTypes, "scheduling.read");
   if (!result.data) return <Notice>{result.error}</Notice>;
   const { definitions, canWrite } = result.data;
   const groups = Array.from(new Map(definitions.map(definition => [definition.role.id, definition.role])).values());

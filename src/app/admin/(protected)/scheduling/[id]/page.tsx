@@ -18,7 +18,7 @@ export default async function ShiftPage({ params, searchParams }: { params: Prom
     const staffingRestriction = assignmentRestriction(detail.shift);
     const candidates = detail.canWrite && !staffingRestriction ? await getAssignmentCandidates(id) : [];
     return { ...detail, staffingRestriction, candidates };
-  });
+  }, "scheduling.read");
   if (result.error) return <Notice>{result.error}</Notice>;
   if (!result.data) notFound();
   const { shift, canWrite, restriction, staffingRestriction, candidates } = result.data;

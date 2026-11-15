@@ -6,7 +6,7 @@ import { Notice } from "@/components/admin/Notice";
 
 export default async function VolunteersPage({ searchParams }: { searchParams?: Promise<{ status?: string }> }) {
   const status = (await searchParams)?.status;
-  const result = await readAdminPage(async () => ({ volunteers: await getVolunteers(), user: await requirePermission("volunteers:read") }));
+  const result = await readAdminPage(async () => ({ volunteers: await getVolunteers(), user: await requirePermission("volunteers:read") }), "volunteers.read");
   const volunteers = result.data?.volunteers.filter(volunteer => status === "ACTIVE" || status === "INACTIVE" ? volunteer.status === status : true);
   return <>
     <h1 className="text-3xl font-semibold">Volunteers</h1>

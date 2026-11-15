@@ -4,6 +4,7 @@ import type { Prisma, ShiftPattern } from "../../generated/prisma/client";
 import { getDatabase } from "../db";
 import { requirePermission } from "../auth/permissions";
 import { AuthorizationError } from "../auth/authorization";
+import { logUnexpectedFailure } from "../diagnostics";
 import { addDays, dateOnly, dateValue, localInstant, nextCutover, occurrenceDates, TIME_ZONE } from "./dates";
 import { definitionSchema, definitionUpdateSchema, capacityUpdateSchema, scheduleFiltersSchema, editSchema, extensionSchema, endSchema, generationSchema, minute, patternSchema, rangeSchema, validationFields, revisionSchema, shiftSchema, versionSchema, type MutationResult } from "./validation";
 
@@ -318,6 +319,7 @@ export async function mutateScheduling(command: SchedulingCommand, input: unknow
     if (error instanceof SchedulingError) return { ok: false, error: error.message, ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}), ...(error.blockedShifts ? { blockedShifts: error.blockedShifts } : {}) };
     if (error && typeof error === "object" && "code" in error && error.code === "P2003") return { ok: false, error: "This shift type has references and cannot be deleted. Deactivate it instead." };
     if (error && typeof error === "object" && "code" in error && error.code === "P2002") return { ok: false, error: "This record already exists or the start time conflicts with another occurrence of this pattern. Reload the schedule before trying again." };
-    return { ok: false, error: "Unable to save scheduling changes. Please try again or reload the page." };
+    const reference = logUnexpectedFailure("scheduling.mutate", error);
+    return { ok: false, error: `Unable to save scheduling changes. Check the schedule before trying again; your change may already have saved. Reference: ${reference}` };
   }
 }

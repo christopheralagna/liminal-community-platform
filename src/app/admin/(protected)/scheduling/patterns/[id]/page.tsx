@@ -9,7 +9,7 @@ import { PatternOperations } from "@/components/admin/SchedulingForms";
 export default async function PatternPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { id } = await params;
   const { saved } = await searchParams;
-  const result = await readAdminPage(() => getPattern(id));
+  const result = await readAdminPage(() => getPattern(id), "scheduling.read");
   if (result.error) return <Notice>{result.error}</Notice>;
   if (!result.data) notFound();
   const { pattern, canWrite } = result.data;

@@ -7,7 +7,7 @@ import { Notice } from "@/components/admin/Notice";
 export default async function ShiftTypePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { id } = await params;
   const { saved } = await searchParams;
-  const result = await readAdminPage(() => getShiftType(id));
+  const result = await readAdminPage(() => getShiftType(id), "scheduling.read");
   if (result.error) return <Notice>{result.error}</Notice>;
   if (!result.data) notFound();
   const { definition, canWrite } = result.data;
