@@ -1,5 +1,9 @@
 # Production operations — Phase 8 prerequisites
 
+Phase 8 Stage B supplies a concrete [$0 hosting procedure](phase-8-deployment.md)
+and guarded operator CLI. This runbook remains the safety baseline; it does not
+authorize provisioning or production writes. See [local evidence](phase-8-readiness.md).
+
 This runbook describes required procedures, not a deployed environment. Hosting,
 production permissions, credentials, backups, and provisioning commands remain
 Phase 8 decisions. Keep the public historical archive separate from synthetic

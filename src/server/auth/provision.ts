@@ -11,7 +11,8 @@ const inputSchema = z.object({
   password: z.string().min(12).max(128),
 });
 
-// Local tooling only. Never export this function from an HTTP route or server action.
+// Operator tooling only. Each CLI independently guards its own target before calling.
+// Never export this function from an HTTP route or server action.
 export async function provisionInitialAdmin(database: ReturnType<typeof createDatabaseClient>, env: Record<string, string | undefined>, input: { email: string; name: string; password: string }) {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) throw new Error("Provide a valid email, name, and a password of 12–128 characters.");

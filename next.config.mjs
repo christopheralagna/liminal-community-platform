@@ -10,6 +10,13 @@ const nextConfig = {
   images: {
     unoptimized: true, // Allows serving local archive images cleanly without external loader issues
   },
+  async headers() {
+    // Default to noindex on Vercel, including its Production environment.
+    // Indexing requires an explicit opt-in and a rebuild before public launch.
+    const noindex = process.env.TEMPORARY_SITE_NOINDEX !== "false" &&
+      (process.env.VERCEL === "1" || process.env.TEMPORARY_SITE_NOINDEX === "true");
+    return noindex ? [{ source: "/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }] : [];
+  },
   async redirects() {
     return [
       { source: "/our-story", destination: "/about", permanent: true },

@@ -5,6 +5,7 @@
 
 # Next.js build output
 /.next/
+/.vercel/
 /out/
 
 # Production build artifacts

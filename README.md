@@ -1,6 +1,10 @@
 # Liminal Community Center & Cafe — Digital Historical Archive & Management Platform
 
-> **Current status — November 14, 2026:** Phases 4–6 are implemented, including assignments and the operational dashboard. Approved Phase 7 remediation is implemented and approved for commit: see [changes, RSC evidence, and validation](docs/phase-7-readiness.md) and the [production operations runbook](docs/production-runbook.md). The intermittent RSC issue remains unresolved; Phase 8 deployment is pending. Public historical images will be reviewed separately before deployment. Older checkpoint and public feature descriptions below are historical; consult the phase guides and [content refinement report](docs/phase-3-content-refinement.md) for current behavior.
+> **Current status — November 15, 2026:** Phase 7 is committed at `fe1aeb29`. Phase 8 Stage B local deployment preparation is implemented for Vercel Hobby + Neon Free ($0/month); Stage B is approved for commit and Stage C free provisioning is authorized; production writes and deployment still require Stage D approval. See [deployment procedures](docs/phase-8-deployment.md) and [validation evidence](docs/phase-8-readiness.md). The intermittent RSC issue remains unresolved. Historical image updates and custom-domain work are deferred.
+
+## Deployment architecture
+
+One Next.js application serves the historical archive and protected synthetic administrative demonstration. The prepared deployment uses Vercel Hobby Node functions, Neon Free PostgreSQL 17, Prisma 7 and Better Auth database sessions at a temporary `.vercel.app` address. Runtime uses a bounded transaction-pooled connection; migrations, initialization and private administrator bootstrap use separately guarded direct connections. Manual encrypted backups and isolated restoration replace paid recovery services. Deployment is pending approval; no live URL exists yet.
 
 ## Backend quickstart (synthetic demonstration data only)
 
@@ -22,7 +26,7 @@ npm run dev
 
 Development database: `127.0.0.1:5434/liminal_dev`; tests: `127.0.0.1:5435/liminal_test`. Each has its own credentials and named volume. `npm run db:stop` stops both without deleting data. Never commit `.env`. The [backend guide](docs/phase-4-backend.md) explains connection commands, schema/custom constraints, test isolation, and future migrations.
 
-Node **24.22.2**, Next.js **16.4.5**, React **19.3.1**, and Prisma **7.10.1** are pinned. The public site requires no database or auth service. `npm run db:generate` regenerates the ignored Prisma client if needed; run it after schema edits. Better Auth 1.7.18 provides backend login, database sessions, permissions, and secure local administrator provisioning. Stage D adds login, a protected dashboard, and volunteer/shift views. Phase 5A adds volunteer management; shifts remain read-only. Scheduling business logic remains unimplemented. See [authentication setup and provisioning](docs/phase-4-authentication.md).
+Node **24.22.2**, Next.js **16.4.5**, React **19.3.1**, and Prisma **7.10.1** are pinned. The public site requires no database or auth service. `npm run db:generate` regenerates the ignored Prisma client if needed; run it after schema edits. Better Auth 1.7.18 provides backend login, database sessions, permissions, and secure local administrator provisioning. The protected administration includes volunteer management, availability, recurring schedules, assignments, capacity controls and an operational coverage dashboard with server-side role enforcement. See [authentication setup and provisioning](docs/phase-4-authentication.md).
 
 A portfolio-quality full-stack web application preserving the history, mission, and community impact of **Liminal Community Center & Cafe**, an authentic nonprofit community living room and pay-what-you-can cafe that operated in Flagstaff, Arizona, from 2021 to 2023.
 
