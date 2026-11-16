@@ -49,3 +49,5 @@ yarn-error.log*
 
 # Prisma client is generated from the committed schema
 /src/generated/prisma/
+.neon
+.vercel

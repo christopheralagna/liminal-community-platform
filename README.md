@@ -1,10 +1,10 @@
 # Liminal Community Center & Cafe — Digital Historical Archive & Management Platform
 
-> **Current status — November 15, 2026:** Phase 7 is committed at `fe1aeb29`. Phase 8 Stage B local deployment preparation is implemented for Vercel Hobby + Neon Free ($0/month); Stage B is approved for commit and Stage C free provisioning is authorized; production writes and deployment still require Stage D approval. See [deployment procedures](docs/phase-8-deployment.md) and [validation evidence](docs/phase-8-readiness.md). The intermittent RSC issue remains unresolved. Historical image updates and custom-domain work are deferred.
+> **Current status — November 16, 2026:** Phase 8 Stage B is committed at `c8a3de3e`. Stage C is complete on Vercel Hobby + Neon Free ($0/month), with backup ownership verified and the independent password-recovery test skipped by owner choice. The production database has no application tables and the application is not deployed. See [infrastructure evidence and remaining approvals](docs/phase-8-infrastructure.md). Stage D migrations, initialization, administrator bootstrap and deployment require explicit approval. The intermittent RSC issue remains unresolved; historical images and the existing domain are untouched.
 
 ## Deployment architecture
 
-One Next.js application serves the historical archive and protected synthetic administrative demonstration. The prepared deployment uses Vercel Hobby Node functions, Neon Free PostgreSQL 17, Prisma 7 and Better Auth database sessions at a temporary `.vercel.app` address. Runtime uses a bounded transaction-pooled connection; migrations, initialization and private administrator bootstrap use separately guarded direct connections. Manual encrypted backups and isolated restoration replace paid recovery services. Deployment is pending approval; no live URL exists yet.
+One Next.js application serves the historical archive and protected synthetic administrative demonstration. The prepared deployment uses Vercel Hobby Node functions, Neon Free PostgreSQL 17, Prisma 7 and Better Auth database sessions at a temporary `.vercel.app` address. Runtime uses a bounded transaction-pooled connection; migrations, initialization and private administrator bootstrap use separately guarded direct connections. Manual encrypted backups and isolated restoration replace paid recovery services. The reserved temporary origin is `https://liminal-portfolio.vercel.app`; it returns 404 until an approved deployment.
 
 ## Backend quickstart (synthetic demonstration data only)
 

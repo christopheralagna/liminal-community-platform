@@ -6,7 +6,7 @@ import { writeProductionBackup } from "../../scripts/production-backup";
 
 let directory: string | undefined;
 afterEach(async () => { vi.unstubAllEnvs(); if (directory) await rm(directory, { recursive: true, force: true }); directory = undefined; });
-const url = "postgresql://liminal_backup:private-placeholder@ep-example.us-east-2.aws.neon.tech/liminal_production?sslmode=verify-full";
+const url = "postgresql://liminal_backup:private-placeholder@ep-example.us-east-2.aws.neon.tech/liminal_production?sslmode=verify-full&channel_binding=require";
 it("refuses unconfirmed, public and symlinked repository destinations before dumping", async () => {
   directory = await mkdtemp(join(tmpdir(), "liminal-backup-guard-"));
   await expect(writeProductionBackup(url, directory, "yes")).rejects.toThrow("encrypted");
@@ -27,13 +27,13 @@ it("removes incomplete archives and never passes credentials as tool arguments",
   await writeFile(executable, '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pg_dump (PostgreSQL) 17.9"; exit 0; fi\nprintf "%s\\n" "$@" > "$ARGUMENTS_FILE"\nprintf "incomplete archive"\nexit 1\n', { mode: 0o700 });
   // Child uses a minimal environment; record args at an explicit literal path instead.
   await writeFile(executable, (await readFile(executable, "utf8")).replace('"$ARGUMENTS_FILE"', `'${argumentsFile.replaceAll("'", "'\\''")}'`));
-  await writeFile(executable, (await readFile(executable, "utf8")).replace('"$@"', '"$@" "sslrootcert=$PGSSLROOTCERT" "sslmode=$PGSSLMODE"'));
+  await writeFile(executable, (await readFile(executable, "utf8")).replace('"$@"', '"$@" "sslrootcert=$PGSSLROOTCERT" "sslmode=$PGSSLMODE" "channelbinding=$PGCHANNELBINDING"'));
   vi.stubEnv("PATH", bin);
   await expect(writeProductionBackup(url, archives, "ENCRYPTED STORAGE VERIFIED")).rejects.toThrow("Backup failed");
   expect(await readdir(archives)).toEqual([]);
   const args = await readFile(argumentsFile, "utf8");
   expect(args).toContain("--format=custom");
-  expect(args).toContain("sslrootcert=system"); expect(args).toContain("sslmode=verify-full");
+  expect(args).toContain("sslrootcert=system"); expect(args).toContain("sslmode=verify-full"); expect(args).toContain("channelbinding=require");
   expect(args).not.toContain("private-placeholder"); expect(args).not.toContain("postgresql:");
   await writeFile(executable, (await readFile(executable, "utf8")).replace("exit 1", "exit 0"));
   const archive = await writeProductionBackup(url, archives, "ENCRYPTED STORAGE VERIFIED");

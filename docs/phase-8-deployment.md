@@ -1,11 +1,11 @@
 # Phase 8 — $0 deployment preparation
 
-Stage B supplies local code/procedures only. No hosted resources, billing,
-production database or deployment have been created. Stage B was reviewed and
-approved for a single preparation commit; Stage C provisioning is separately
-authorized. Production writes and deployment still require Stage D approval.
-`www.liminalflagstaff.org` and historical images remain untouched. The intermittent
-RSC stream issue remains unresolved.
+Stage B was committed as `c8a3de3e7fca97f10e389d96f4315e4a0650220a`.
+Stage C has provisioned the approved free infrastructure; see the
+[actual configuration and evidence](phase-8-infrastructure.md). No application
+migration, initialization, account or deployment has been executed. Production
+writes and deployment still require Stage D approval. `www.liminalflagstaff.org`
+and historical images remain untouched. The intermittent RSC issue is unresolved.
 
 ## Architecture, limits and cost
 
@@ -91,7 +91,7 @@ retry or timeout policy changed. Test cold starts and contention before tuning.
 Vercel Fluid Hobby allows 300-second requests; normal DB transactions must remain
 short. Pooler queues are not additional database execution capacity.
 
-## Stage C database roles (not executed)
+## Database roles and remaining grants
 
 Enable MFA on provider accounts before configuring production credentials.
 Review actual project/branch/endpoint IDs, region, PostgreSQL version, Free/Hobby
@@ -118,9 +118,10 @@ Through a private direct TLS operator session:
 5. Verify runtime cannot CREATE/ALTER tables or become migrator. Review future
    default privileges or include explicit grants with each release.
 
-These are provisioning instructions, not hosted validation. Check actual provider
-ownership/role capabilities at Stage C. If restricted, stop for review instead of
-silently using a provider owner as runtime identity.
+The database, four roles and ownership have now been verified in Stage C. The
+post-migration table grants in step 4 remain a Stage D operation. See the
+[infrastructure record](phase-8-infrastructure.md) for actual identities and
+provider-specific ownership setup. Never use the provider owner as runtime identity.
 
 ## Guarded production operator CLI
 
@@ -136,13 +137,15 @@ Hidden terminal input has history disabled so later prompts cannot recall secret
 The CLI does not import dotenv and refuses non-TTY execution, extra arguments,
 debug logging, nonproduction mode, local/custom/pooled hosts and wrong roles or
 DB names. It reads URLs privately, permits only the exact direct endpoint, port
-5432, expected role, `liminal_production` and sole query option
-`sslmode=verify-full`. URL overrides and TLS weakening are rejected.
+5432, expected role, `liminal_production`, mandatory `sslmode=verify-full` and
+optional `channel_binding=require` only. Duplicate parameters, URL overrides and
+TLS weakening are rejected.
 
 Each invocation requires an exact operation/host/database/role approval phrase.
 Writes require `BACKUP VERIFIED`: the operator must actually verify the external
 recovery point. Attestation is not automatic backup QA. It checks live DB/user,
-PostgreSQL 17, primary status and active TLS, and takes a nonblocking session
+PostgreSQL 17, primary status and the actual native TLS socket with verified
+certificate chain and endpoint hostname, and takes a nonblocking session
 advisory lock to serialize operator commands. Generic errors suppress raw library
 and child-tool output. No reset, automatic retry or migration resolution exists.
 
@@ -185,7 +188,8 @@ overwrite an existing account.
 Install PostgreSQL **17** client tools privately. Use `production:operator --
 backup`, the direct TLS endpoint and `liminal_backup`. Connection credentials go
 only in the child environment, never arguments/logs. The CLI requires pg_dump 17
-and sets `PGSSLROOTCERT=system` with `PGSSLMODE=verify-full`; the installed client
+and sets `PGSSLROOTCERT=system` with `PGSSLMODE=verify-full`, preserving
+`PGCHANNELBINDING=require` when present in the URL; the installed client
 must have a working system CA store. See [PostgreSQL TLS trust](https://www.postgresql.org/docs/17/libpq-connect.html).
 Do not disable verification if trust setup fails.
 
@@ -273,7 +277,7 @@ in `phase-8-readiness.md`.
 
 ## Approval sequence
 
-1. Review uncommitted Stage B diff/evidence and explicitly approve Stage C.
+1. Completed: review Stage B, commit it, and explicitly approve Stage C.
 2. Stage C creates only Hobby/Free resources and separate database/roles; configures
    secret scopes, canonical URL, free firewall and backup destination; verifies
    actual target/permissions. No application migration, seed, account or deployment.

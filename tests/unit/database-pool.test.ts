@@ -9,7 +9,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 it("bounds the shared adapter pool and retains CLI disposal ownership", () => {
   vi.stubEnv("VERCEL", undefined);
   createDatabaseClient("postgresql://placeholder");
-  expect(mocks.pool).toHaveBeenCalledWith(expect.objectContaining({ max: 3, idleTimeoutMillis: 5000, connectionTimeoutMillis: 5000 }));
+  expect(mocks.pool).toHaveBeenCalledWith(expect.objectContaining({ max: 3, idleTimeoutMillis: 5000, connectionTimeoutMillis: 5000, enableChannelBinding: true }));
   expect(mocks.adapter).toHaveBeenCalledWith(expect.anything(), { disposeExternalPool: true });
   expect(mocks.attach).not.toHaveBeenCalled();
 });

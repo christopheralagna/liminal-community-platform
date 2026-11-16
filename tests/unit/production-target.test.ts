@@ -30,6 +30,12 @@ describe("production operator safety", () => {
     for (const change of [{ database: "neondb" }, { username: "liminal_migrator" }, { version: 180000 }, { recovery: true }]) expect(() => assertProductionIdentity(target, [{ ...identity, ...change }])).toThrow();
     expect(() => assertProductionIdentity(target, [])).toThrow();
   });
+  it("preserves the provider's required channel binding while rejecting weaker or duplicate settings", () => {
+    expect(validateProductionUrl(url + "&channel_binding=require", target)).toBe(url + "&channel_binding=require");
+    for (const suffix of ["&channel_binding=prefer", "&channel_binding=disable", "&channel_binding=require&channel_binding=require", "&channel_binding=require&host=localhost"]) {
+      expect(() => validateProductionUrl(url + suffix, target)).toThrow("approved direct");
+    }
+  });
   it("requires operation-specific confirmation and backup attestation for writes", () => {
     expect(() => assertApproval(target, approvalPhrase(target), "BACKUP VERIFIED")).not.toThrow();
     expect(() => assertApproval(target, "yes", "BACKUP VERIFIED")).toThrow();

@@ -24,7 +24,8 @@ export async function writeProductionBackup(url: string, directory: string, encr
       const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--lock-wait-timeout=10s"], {
         env: { NODE_ENV: "production", PATH: process.env.PATH, PGHOST: connection.hostname, PGPORT: "5432", PGDATABASE: decodeURIComponent(connection.pathname.slice(1)),
           PGUSER: decodeURIComponent(connection.username), PGPASSWORD: decodeURIComponent(connection.password),
-          PGSSLMODE: "verify-full", PGSSLROOTCERT: "system", PGCONNECT_TIMEOUT: "10" },
+          PGSSLMODE: "verify-full", PGSSLROOTCERT: "system", PGCONNECT_TIMEOUT: "10",
+          PGCHANNELBINDING: connection.searchParams.get("channel_binding") === "require" ? "require" : "prefer" },
         stdio: ["ignore", handle.fd, "ignore"],
       });
       child.once("error", reject);

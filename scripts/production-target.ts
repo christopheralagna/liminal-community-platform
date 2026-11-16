@@ -1,4 +1,5 @@
 // Operator tooling only. Deliberately does not load .env or accept URL arguments.
+import { checkServerIdentity, TLSSocket } from "node:tls";
 export type ProductionOperation = "status" | "migrate" | "initialize" | "admin" | "backup";
 export type ProductionTarget = { host: string; database: string; role: string; operation: ProductionOperation };
 
@@ -19,15 +20,26 @@ export function validateProductionUrl(value: string, target: ProductionTarget): 
     if (url.protocol !== "postgresql:" || url.hostname !== target.host || (url.port && url.port !== "5432") ||
         url.pathname !== `/${target.database}` || decodeURIComponent(url.username) !== target.role || !url.password || url.hash ||
         url.searchParams.get("sslmode") !== "verify-full" ||
-        Array.from(url.searchParams).some(([key]) => key !== "sslmode") || url.searchParams.getAll("sslmode").length !== 1) throw new Error();
+        Array.from(url.searchParams).some(([key]) => !["sslmode", "channel_binding"].includes(key)) ||
+        url.searchParams.getAll("sslmode").length !== 1 || url.searchParams.getAll("channel_binding").length > 1 ||
+        (url.searchParams.has("channel_binding") && url.searchParams.get("channel_binding") !== "require")) throw new Error();
     return value;
-  } catch { throw new Error("Connection must match the approved direct host/database/role and use sslmode=verify-full only."); }
+  } catch { throw new Error("Connection must match the approved direct host/database/role, use sslmode=verify-full, and allow only optional channel_binding=require."); }
 }
 
 export function assertProductionIdentity(target: ProductionTarget, rows: { database: string; username: string; version: number; recovery: boolean }[]) {
   const row = rows[0];
   if (rows.length !== 1 || row.database !== target.database || row.username !== target.role ||
       row.version < 170000 || row.version >= 180000 || row.recovery !== false) throw new Error("Live production identity or PostgreSQL version mismatch.");
+}
+
+export function assertProductionTransport(target: ProductionTarget, transport: unknown) {
+  // Neon terminates client TLS at its proxy; pg_stat_ssl describes a different hop.
+  // Require the actual client socket's certificate chain AND hostname validation.
+  if (!(transport instanceof TLSSocket) || !transport.encrypted || !transport.authorized ||
+      checkServerIdentity(target.host, transport.getPeerCertificate())) {
+    throw new Error("A certificate-verified TLS connection to the approved host is required.");
+  }
 }
 
 export function approvalPhrase(target: ProductionTarget) {

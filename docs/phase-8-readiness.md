@@ -1,5 +1,9 @@
 # Phase 8 Stage B — local preparation evidence
 
+Historical Stage B evidence follows. Stage B is committed at `c8a3de3e`.
+See the [Stage C infrastructure record](phase-8-infrastructure.md) for subsequent
+provisioning, provider compatibility corrections and current remaining checks.
+
 November 15, 2026. Starting repository: clean `main`, Phase 7 committed at
 `fe1aeb29`. Stage B was explicitly approved for local implementation only. All
 changes were initially delivered **uncommitted**, then reviewed and approved for

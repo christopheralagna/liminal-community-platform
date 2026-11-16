@@ -4,10 +4,10 @@ Phase 8 Stage B supplies a concrete [$0 hosting procedure](phase-8-deployment.md
 and guarded operator CLI. This runbook remains the safety baseline; it does not
 authorize provisioning or production writes. See [local evidence](phase-8-readiness.md).
 
-This runbook describes required procedures, not a deployed environment. Hosting,
-production permissions, credentials, backups, and provisioning commands remain
-Phase 8 decisions. Keep the public historical archive separate from synthetic
-administrative records. The planned public-image review is outside Phase 7.
+Free infrastructure is provisioned; the application is not deployed. The
+[Stage C record](phase-8-infrastructure.md) distinguishes observed provider state
+from remaining Stage D operations. Keep the public historical archive separate
+from synthetic administrative records. Historical image review remains deferred.
 
 ## Configuration and release preparation
 

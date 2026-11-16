@@ -8,7 +8,7 @@ import { createDatabaseClient } from "../src/server/database/client";
 import { provisionInitialAdmin } from "../src/server/auth/provision";
 import { readAuthEnvironment } from "../src/server/auth/environment";
 import { addDays, phoenixDate } from "../src/server/scheduling/dates";
-import { approvalPhrase, assertApproval, assertProductionIdentity, productionTarget, validateProductionUrl } from "./production-target";
+import { approvalPhrase, assertApproval, assertProductionIdentity, assertProductionTransport, productionTarget, validateProductionUrl } from "./production-target";
 import { initializeProductionFixtures, fixtureDates } from "./production-fixtures";
 import { operatorPrompt } from "./operator-prompt";
 import { writeProductionBackup } from "./production-backup";
@@ -27,13 +27,12 @@ async function main() {
     const backup = ["migrate", "initialize", "admin"].includes(target.operation) ? await prompt.ask("After verifying an external recoverable backup, type BACKUP VERIFIED: ") : "";
     assertApproval(target, phrase, backup);
     const url = validateProductionUrl(await prompt.secret("Direct PostgreSQL URL (hidden): "), target);
-    client = new Client({ connectionString: url, connectionTimeoutMillis: 10000 });
+    client = new Client({ connectionString: url, connectionTimeoutMillis: 10000, enableChannelBinding: true });
     client.on("error", () => { /* Never serialize pg's credential-bearing client/errors. Queries fail closed. */ });
     await client.connect();
     const identity = await client.query('SELECT current_database() AS database, current_user AS username, current_setting(\'server_version_num\')::int AS version, pg_is_in_recovery() AS recovery');
     assertProductionIdentity(target, identity.rows);
-    const tls = await client.query("SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()");
-    if (tls.rows[0]?.ssl !== true) throw new Error("Verified TLS is required.");
+    assertProductionTransport(target, (client as unknown as { connection: { stream: unknown } }).connection.stream);
     // One operator operation at a time; independent from the bootstrap xact lock.
     const lock = await client.query("SELECT pg_try_advisory_lock(7684202609::bigint) AS acquired");
     if (!lock.rows[0]?.acquired) throw new Error("Another production operator command is running.");
