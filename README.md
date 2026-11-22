@@ -8,6 +8,10 @@ The two parts share one Next.js codebase: a six-page historical website and a pr
 
 **Stack:** Next.js 16 · React 19 · TypeScript · Tailwind CSS · PostgreSQL 17 · Prisma 7 · Better Auth · Zod · Vitest
 
+**[Live Website](https://liminal-portfolio-67fzxorku-hello-joy-wolf.vercel.app/)** · [Administrative Platform](#administrative-platform) · [Engineering](#engineering)
+
+**Hosting:** Vercel · Neon PostgreSQL
+
 ![Historical homepage with Liminal branding, archival photography, and a permanent closure notice](docs/screenshots/homepage.png)
 
 [Administrative platform](#administrative-platform) · [Engineering](#engineering) · [Local development](#local-development) · [Status and limitations](#status-and-limitations)
@@ -91,6 +95,16 @@ Zod validates mutation inputs; domain checks run again on the server. Unexpected
 Unit tests cover validation, time/calendar calculations, availability boundaries, environment safeguards, and diagnostic redaction. PostgreSQL integration tests exercise real queries, Better Auth sessions, constraints, rollback, stale requests, and competing transactions. Concurrency cases include two coordinators competing for the final spot, overlapping assignments, profile edits racing assignment creation, and capacity changes racing reactivation.
 
 The latest [recorded infrastructure validation](docs/phase-8-infrastructure.md) reports **52 unit tests and 140 PostgreSQL integration tests passing**, plus TypeScript, ESLint, and an isolated production build. These are recorded checkpoint results, not a claim of a fresh full-suite run for this README update. Browser verification and hosted checks have separate limits described below.
+
+### Deployment & Infrastructure
+
+The application is deployed on Vercel, with a hosted PostgreSQL 17 database provided by Neon.
+
+The public historical archive is served through statically rendered pages, while the administrative platform uses authenticated server-side operations and persistent PostgreSQL storage.
+
+The deployment uses separate database connections for application runtime and administrative operations, with production migrations and database initialization managed through guarded operator tooling.
+
+Administrative records are synthetic and intended solely for demonstration.
 
 ## Local development
 
