@@ -39,13 +39,13 @@ yarn-error.log*
 *.MP4
 *.zip
 *.tar.gz
-*.png
 *.jpg
 *.jpeg
+website/
 
 # Historical raw references & archives containing private records
 /references/
-
+/website/
 
 # Prisma client is generated from the committed schema
 /src/generated/prisma/
