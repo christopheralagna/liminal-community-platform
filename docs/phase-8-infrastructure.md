@@ -4,9 +4,9 @@ Verified November 16, 2026. Stage B commit:
 `c8a3de3e7fca97f10e389d96f4315e4a0650220a`.
 Stage C source/documentation changes are recorded in the commit containing this
 report; the final diff was reviewed before committing.
-Stage C is complete with an accepted verification limitation: infrastructure and
-backup ownership enforcement are verified; the owner explicitly chose to skip
-the independent saved-password unlock test. Password recovery is unverified. **No application migration, synthetic
+Stage C is approved complete. Infrastructure and backup ownership enforcement
+are verified. On November 16, 2026, the owner subsequently confirmed a successful
+independent encrypted-backup unlock, completing the previously skipped check. **No application migration, synthetic
 initialization, administrator bootstrap or application deployment was executed.**
 No billing, trial, paid resource, custom domain or historical image change was made.
 `www.liminalflagstaff.org` is untouched. The RSC issue remains unresolved.
@@ -142,11 +142,10 @@ auth secret in `operator-secrets.env`, plus `initial-backup-manifest.json` and t
 initial dump. Never open or print the secrets file in logs/screenshots. Remounting
 and viewing the private folder succeeded after mounting the attached volume in
 Disk Utility. The owner subsequently confirmed that opening the mounted volume
-and accessing its `private` folder works. **An independent unlock using the saved
-password remains unconfirmed**;
-mounting an already-attached image can reuse an unlocked key. The owner explicitly
-chose to skip this additional test and proceed on November 16, 2026. This is an
-accepted verification limitation, not evidence that password recovery passed.
+and accessing its `private` folder works. The owner later explicitly confirmed
+that the independent encrypted-backup unlock succeeded on November 16, 2026.
+This is owner-confirmed password recovery, separate from the automated encryption,
+permissions, archive and isolated restoration checks.
 
 Client-only Homebrew `libpq@17` **17.12** was installed; use command-local PATH
 `/opt/homebrew/opt/libpq@17/bin`. No PostgreSQL server/service or shell profile was
@@ -199,8 +198,9 @@ no purchased storage is authorized.
   schema, production-only variable scopes and active WAF configuration were checked.
 - Full hosted application end-to-end proof is intentionally pending Stage D.
 
-Stage C is closed with the owner-accepted unverified password-recovery check
-recorded above. Filesystem ownership enforcement is verified. The Stage C
+Stage C is approved complete, including owner-confirmed independent encrypted
+backup unlock. See the [Stage D execution checklist](phase-8-stage-d-checklist.md);
+preparation does not authorize execution. Filesystem ownership enforcement is verified. The Stage C
 compatibility diff was reviewed for its commit. Obtain **explicit Stage D
 authorization** naming:
 

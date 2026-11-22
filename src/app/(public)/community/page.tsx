@@ -42,7 +42,7 @@ export default function CommunityPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mb-10 space-y-3">
             <h2 className="text-3xl sm:text-4xl font-semibold text-cream-50">Autonomous Volunteer Teams</h2>
-            <p className="text-cream-300 font-light leading-relaxed">The archived volunteer page described teams whose members coordinated their work together. These are some of the activities documented in Liminal&apos;s records.</p>
+            <p className="text-cream-300 font-light leading-relaxed">Below are some of the roles that volunteers took on during Liminal's existence.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {VOLUNTEER_TEAMS.map((team) => (

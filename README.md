@@ -1,6 +1,6 @@
 # Liminal Community Center & Cafe — Digital Historical Archive & Management Platform
 
-> **Current status — November 16, 2026:** Phase 8 Stage B is committed at `c8a3de3e`. Stage C is complete on Vercel Hobby + Neon Free ($0/month), with backup ownership verified and the independent password-recovery test skipped by owner choice. The production database has no application tables and the application is not deployed. See [infrastructure evidence and remaining approvals](docs/phase-8-infrastructure.md). Stage D migrations, initialization, administrator bootstrap and deployment require explicit approval. The intermittent RSC issue remains unresolved; historical images and the existing domain are untouched.
+> **Current status — November 16, 2026:** Stage C is committed at `e3f49722`; the owner approved Stage D execution. Production migrations, restricted table grants and the approved synthetic initialization have passed verification. Private administrator entry is pending; the application is not deployed. See the [Stage D execution record](docs/phase-8-stage-d-execution.md). Infrastructure remains Vercel Hobby + Neon Free ($0/month). The intermittent RSC issue remains unresolved; historical images and the existing domain are untouched.
 
 ## Deployment architecture
 

@@ -116,16 +116,14 @@ export default function GalleryPage() {
             {filteredPhotos.map((photo) => (
               <figure
                 key={photo.id}
-                className="bg-charcoal-900 border border-charcoal-800 rounded-2xl overflow-hidden cursor-pointer group hover:border-charcoal-700 transition-all duration-200 flex flex-col justify-between"
+                className="bg-charcoal-900 border border-charcoal-800 rounded-2xl overflow-hidden group hover:border-charcoal-700 transition-colors duration-200"
               >
                 {/* Photo Image Frame */}
                 <button
                   type="button"
                   onClick={() => setActivePhoto(photo)}
                   aria-label={`View ${photo.title}`}
-                  className={`relative block w-full bg-charcoal-950 overflow-hidden ${
-                    photo.aspect === "portrait" ? "aspect-[4/5]" : "aspect-[16/11]"
-                  }`}
+                  className="relative block w-full aspect-[4/3] bg-charcoal-950 overflow-hidden cursor-zoom-in focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-peach-300"
                 >
                   <Image
                     src={photo.src}

@@ -45,7 +45,7 @@ export const ARCHIVAL_PHOTOS: ArchivalPhoto[] = [
     "title": "Free Community Art Supply Racks",
     "category": "art",
     "categoryLabel": "Arts & Supplies",
-    "description": "Shelves of art materials in the art supply room.",
+    "description": "Shelves of free-to-use art supplies for the community. Supplies were donated by local nonprofits and businesses.",
     "src": "/images/archival/art-room.jpg",
     "aspect": "portrait",
     "room": "Art Supply Room"
@@ -122,10 +122,10 @@ export const ARCHIVAL_PHOTOS: ArchivalPhoto[] = [
   },
   {
     "id": "sold-artwork",
-    "title": "Featured Local Artist Wall Exhibition",
+    "title": "Featured Local Artist Prints for Sale",
     "category": "art",
     "categoryLabel": "Arts & Supplies",
-    "description": "Artwork displayed at Liminal.",
+    "description": "A collection of prints by local artists for sale at Liminal. The proceeds from these sales went directly to the artists.",
     "src": "/images/archival/sold-artwork.jpg",
     "aspect": "portrait",
     "room": "Gallery Wall"
@@ -155,7 +155,7 @@ export const ARCHIVAL_PHOTOS: ArchivalPhoto[] = [
     "title": "Art Supply Room",
     "category": "art",
     "categoryLabel": "Arts & Supplies",
-    "description": "A view of the art supply room.",
+    "description": "A view of the art supply room, where we collected and distributed free art supplies to the community.",
     "src": "/images/archival/art-room-2.jpg",
     "aspect": "landscape",
     "room": "Art Supply Room"

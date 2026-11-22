@@ -312,14 +312,13 @@ export default function HomePage() {
       <section id="about" className="w-full bg-charcoal-950 py-16 sm:py-24">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Terracotta Header Callout */}
-          <div className="text-center max-w-3xl mx-auto mb-12 sm:mb-16">
+          <div className="text-center max-w-4xl mx-auto mb-12 sm:mb-16">
             <span className="text-xs uppercase tracking-widest font-semibold text-terracotta-400">
               The Meaning of Liminal
             </span>
             <p className="mt-4 font-serif italic text-xl sm:text-2xl text-peach-200 leading-relaxed">
               &ldquo;The word &lsquo;liminal&rsquo; describes something that is difficult to define or
-              categorize because it exists <span className="underline decoration-terracotta-500">in-between</span>{" "}
-              things that are more familiar to us.&rdquo;
+              categorize because it exists in-between things that are more familiar to us.&rdquo;
             </p>
           </div>
 
