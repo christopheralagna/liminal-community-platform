@@ -1,169 +1,181 @@
-# Liminal Community Center & Cafe — Digital Historical Archive & Management Platform
+# Liminal Community Center & Cafe
 
-> **Current status — November 16, 2026:** Stage C is committed at `e3f49722`; the owner approved Stage D execution. Production migrations, restricted table grants and the approved synthetic initialization have passed verification. Private administrator entry is pending; the application is not deployed. See the [Stage D execution record](docs/phase-8-stage-d-execution.md). Infrastructure remains Vercel Hobby + Neon Free ($0/month). The intermittent RSC issue remains unresolved; historical images and the existing domain are untouched.
+**A public historical archive and a full-stack volunteer management application.**
 
-## Deployment architecture
+I co-founded and directed Liminal, a nonprofit community center and pay-what-you-can cafe in Flagstaff, Arizona, that operated from 2021 to 2023. This project preserves its public history and translates volunteer coordination needs into a modern administrative application.
 
-One Next.js application serves the historical archive and protected synthetic administrative demonstration. The prepared deployment uses Vercel Hobby Node functions, Neon Free PostgreSQL 17, Prisma 7 and Better Auth database sessions at a temporary `.vercel.app` address. Runtime uses a bounded transaction-pooled connection; migrations, initialization and private administrator bootstrap use separately guarded direct connections. Manual encrypted backups and isolated restoration replace paid recovery services. The reserved temporary origin is `https://liminal-portfolio.vercel.app`; it returns 404 until an approved deployment.
+The two parts share one Next.js codebase: a six-page historical website and a protected platform for volunteer profiles, recurring availability, shift scheduling, assignments, and staffing coverage. The administrative software is a modern demonstration inspired by that experience; it was not the system used at the original center. Administrative demonstration records are synthetic.
 
-## Backend quickstart (synthetic demonstration data only)
+**Stack:** Next.js 16 · React 19 · TypeScript · Tailwind CSS · PostgreSQL 17 · Prisma 7 · Better Auth · Zod · Vitest
+
+![Historical homepage with Liminal branding, archival photography, and a permanent closure notice](docs/screenshots/homepage.png)
+
+[Administrative platform](#administrative-platform) · [Engineering](#engineering) · [Local development](#local-development) · [Status and limitations](#status-and-limitations)
+
+## Administrative platform
+
+The protected `/admin` application supports the work of coordinating volunteers, from recording availability to filling upcoming shifts. ADMIN and COORDINATOR users can manage volunteers and schedules; VIEWER users have read-only access. Operational roles such as cafe or setup are separate from application permissions.
+
+### Operational dashboard
+
+The dashboard reports active volunteers, upcoming shifts, shifts needing coverage, and open spots over the next seven days. Coverage cards distinguish empty and partially staffed shifts and link directly to assignment controls. Counts reflect recorded occurrences only; reading the dashboard never generates a recurring schedule.
+
+![Administrative dashboard showing synthetic volunteer totals and a shift needing coverage](docs/screenshots/admin-dashboard.png)
+
+### Volunteer records and availability
+
+Create and edit profiles, filter active/inactive volunteers, maintain operational-role memberships, and record weekly availability with effective start and end dates. Optional food-handler dates are recorded as information, not enforced as assignment qualifications. Profile updates preserve existing assignment relationships.
+
+![Volunteer directory showing synthetic profiles, active status, and operational roles](docs/screenshots/admin-volunteer-list.png)
+
+### Scheduling and recurring shifts
+
+Create one-time shifts, manage a role-organized shift-type catalog, and define weekly repeating patterns. Coordinators explicitly generate or extend occurrences, revise patterns, and shorten or cancel future schedules. A weekly calendar and chronological list support date, role, shift-type, and canceled-shift filters. Scheduling uses `America/Phoenix` local time.
+
+![Weekly schedule with date and role filters, shift types, and a synthetic scheduled shift](docs/screenshots/admin-scheduling.png)
+
+### Assignments and staffing rules
+
+Shift details show staffing, candidate eligibility, availability warnings, and assignment history. The server rechecks each assignment or reactivation against current records:
+
+- **Eligibility:** the volunteer must be active and hold the required operational role; duplicate assignments, overlapping commitments, and full shifts are rejected.
+- **Availability:** effective-dated windows must cover the whole shift, including overnight intervals. Outside or unconfirmed availability requires explicit coordinator acknowledgment; it is not an absolute assignment ban.
+- **History:** canceling frees a spot without deleting the relationship. Reassigning reactivates the same row after fresh checks. Completed assignments remain read-only.
+- **Schedule changes:** future scheduled shifts can change time or be canceled once no active assignments remain. Capacity can change while staffed, but cannot fall below active staffing. Canceled/completed assignment history alone does not block these operations.
+
+Bulk schedule shortening and cancellation are atomic: if any affected shift has active assignments, the entire operation is rejected with links to the blocked shifts. Started, canceled, and completed shifts remain read-only.
+
+## Public historical archive
+
+The public site uses reviewed photographs, posters, and historical descriptions, with a persistent notice that Liminal closed in 2023. Local Montserrat fonts, charcoal and terracotta colors, the original logo, reusable page heroes, and arched photo treatments connect the pages visually. Shared navigation, a resource carousel, and native dialog lightboxes include keyboard and reduced-motion accommodations.
+
+| Route | Content and interaction |
+| --- | --- |
+| `/` | Introduction, historical location and hours, community resources, photographs, and flyers |
+| `/about` | Story, philosophy, and descriptions of the former facilities |
+| `/cafe` | Historical cafe description and pay-what-you-can approach |
+| `/events` | Category-filtered event records and available archival flyer lightboxes |
+| `/community` | Volunteer participation and descriptions of team activities |
+| `/gallery` | Photo and poster collection with keyword search, category filters, room labels, and a lightbox |
+
+Legacy routes redirect to their canonical pages; `/facilities` redirects to `/about#facilities`.
+
+![Photo archive with keyword search, category filters, and historical image cards](docs/screenshots/photo-archive.png)
+
+These are application screenshots supplied for this repository. Administrative records shown are synthetic, and the dashboard copy excludes the personal account header. [Screenshot provenance](docs/screenshots/README.md) records the source files and preparation.
+
+## Engineering
+
+### Relational model and durable scheduling identity
+
+The [Prisma schema](prisma/schema.prisma) separates authentication accounts from volunteer profiles: a volunteer does not need a login. Twelve models cover auth/session records, profiles, operational roles and memberships, availability, shift definitions, recurring patterns, actual shifts, and assignments.
+
+Database foreign keys, compound uniqueness, and custom SQL constraints complement application validation. Each volunteer/shift pair has one assignment row. Recurring occurrences have an immutable original local date, enforced by a database trigger, distinct from their editable start time. Generation recognizes existing occurrence identities, including canceled ones, so extending a pattern does not silently restore canceled work. See the [database design](docs/database-design.md) and [scheduling guide](docs/phase-5b-scheduling.md).
+
+### Transactions, concurrency, and stale forms
+
+Assignment writes use PostgreSQL `READ COMMITTED` transactions with parameterized row locks in a consistent order: **pattern → shift → volunteer → existing assignment**. Fresh checks after locking protect the last available spot, serialize overlapping assignments for the same volunteer, and coordinate with profile edits. Scheduling mutations share the pattern/shift locks; bulk operations lock affected shifts in stable ID order.
+
+Monotonically advancing timestamp versions reject stale submissions instead of overwriting newer state. Profile, membership, and availability changes commit together. Failed writes roll back; successful writes invalidate the relevant views. The [assignment service](src/server/scheduling/assignments.ts) and [scheduling flexibility guide](docs/phase-5d-scheduling-flexibility.md) show the implementation and its race-condition policies.
+
+The dashboard uses a short **`REPEATABLE READ`, read-only transaction** so counts and coverage lists share one snapshot even if staffing changes during the read. Queries page through shifts with deterministic ordering while retaining only the displayed rows. See the [dashboard design](docs/phase-6-dashboard.md).
+
+### Authentication and validation boundaries
+
+Better Auth manages password credentials and PostgreSQL-backed sessions. Public signup is disabled; local accounts are provisioned through guarded interactive commands. Server services independently check the session and current database role/active status before protected operations, rather than relying on hidden buttons. Origin/CSRF checks remain enabled, and cookies are HTTP-only with Secure enabled for HTTPS.
+
+Zod validates mutation inputs; domain checks run again on the server. Unexpected failures produce sanitized diagnostic references. A response failure may follow a committed write, so error messages instruct the operator to inspect saved state before retrying. See [authentication and provisioning](docs/phase-4-authentication.md) and [diagnostics/readiness](docs/phase-7-readiness.md).
+
+### Automated verification
+
+Unit tests cover validation, time/calendar calculations, availability boundaries, environment safeguards, and diagnostic redaction. PostgreSQL integration tests exercise real queries, Better Auth sessions, constraints, rollback, stale requests, and competing transactions. Concurrency cases include two coordinators competing for the final spot, overlapping assignments, profile edits racing assignment creation, and capacity changes racing reactivation.
+
+The latest [recorded infrastructure validation](docs/phase-8-infrastructure.md) reports **52 unit tests and 140 PostgreSQL integration tests passing**, plus TypeScript, ESLint, and an isolated production build. These are recorded checkpoint results, not a claim of a fresh full-suite run for this README update. Browser verification and hosted checks have separate limits described below.
+
+## Local development
+
+Use **Node 24.22.2** (`.nvmrc` / `.node-version`) and npm; the recorded validation environment used npm 11.19.1. Docker Desktop is required for the local administrative database services. Exact dependency versions are pinned in [package.json](package.json) and the lockfile.
 
 ```bash
-source "$HOME/.nvm/nvm.sh"
-nvm use
-npm ci                         # Also generates the Prisma client; no DB connection needed
-cp .env.example .env            # Only if .env does not already exist
-# Edit .env: separate random dev/test passwords and matching URL-encoded URL passwords.
-npm run db:up                  # Requires Docker Desktop running
-npm run db:validate
-npm run db:migrate             # Guarded, additive committed migrations; no reset
-npm run db:seed                # Create missing fictional fixtures; preserve existing edits
-npm run db:status
-npm test
-npm run test:db                # Uses only TEST_DATABASE_URL on the separate test service
-npm run dev
-```
-
-Development database: `127.0.0.1:5434/liminal_dev`; tests: `127.0.0.1:5435/liminal_test`. Each has its own credentials and named volume. `npm run db:stop` stops both without deleting data. Never commit `.env`. The [backend guide](docs/phase-4-backend.md) explains connection commands, schema/custom constraints, test isolation, and future migrations.
-
-Node **24.22.2**, Next.js **16.4.5**, React **19.3.1**, and Prisma **7.10.1** are pinned. The public site requires no database or auth service. `npm run db:generate` regenerates the ignored Prisma client if needed; run it after schema edits. Better Auth 1.7.18 provides backend login, database sessions, permissions, and secure local administrator provisioning. The protected administration includes volunteer management, availability, recurring schedules, assignments, capacity controls and an operational coverage dashboard with server-side role enforcement. See [authentication setup and provisioning](docs/phase-4-authentication.md).
-
-A portfolio-quality full-stack web application preserving the history, mission, and community impact of **Liminal Community Center & Cafe**, an authentic nonprofit community living room and pay-what-you-can cafe that operated in Flagstaff, Arizona, from 2021 to 2023.
-
----
-
-## 🏛️ Project Purpose
-
-1. **Public Historical Archive (Phase 2 & Phase 3)**: A multipage, responsive digital archive celebrating Liminal's physical space, community offerings, radical popular education, sliding-scale economics, and mutual aid activities.
-2. **Nonprofit Management Platform (Upcoming Phases)**: A modern administrative application inspired by Liminal's authentic operational workflows (volunteer scheduling, barista certifications, conflict detection, expense ledgers, and event staffing).
-
----
-
-## 🌐 Public Historical Website Structure
-
-The public archive comprises six cohesive routes sharing a unified design system, warm terracotta/charcoal palette, authentic typography, and accessible navigation:
-
-| Route | Page | Key Content & Interactive Features |
-|---|---|---|
-| **`/`** | **Home** | Statement hero, historical hours and sandstone location, community resources carousel, arched volunteer spotlight, mission breakdown, and noticeboard flyer collage. |
-| **`/about`** | **Our Story &amp; Philosophy** | Founding narrative, critique of commercial spaces, Paulo Freire popular education roots, 5 physical facility tours, complete co-founders' essays (Christopher Alagna & Ryan McElligott), and 2021–2023 timeline. |
-| **`/cafe`** | **The Café &amp; Equity Model** | Third-wave coffee philosophy, authentic historical menu (beverages + *Evolve Eats* small plates), and an interactive **Sliding-Scale Equity Simulator** demonstrating the *"pay high // pay low"* mutual-aid model. |
-| **`/events`** | **Community &amp; Events** | Chronological event ledger, 6 category filters (Mutual Aid, Live Music, Political Education, Community Arts, Gatherings), and an interactive **Archival Flyer Lightbox**. |
-| **`/community`** | **Volunteering &amp; Care** | 6 autonomous volunteer working groups, shift schedules (Wed–Sun 10am–2pm & 2pm–6pm), barista training requirements, daily operational checklists, and community care principles. |
-| **`/gallery`** | **Photo &amp; Media Archive** | Curated catalog of 21 archival photographs, keyword search, category filter pills, room tags, and an accessible **Photo Lightbox Modal** with full historical descriptions. |
-
-*Note: Legacy aliases (`/our-story`, `/menu`, `/programming`, `/archive`, `/facilities`) automatically issue 308 permanent redirects to the canonical routes above.*
-
----
-
-## 🚀 Quickstart & Local Development
-
-### Prerequisites
-* **Node.js**: 24.22.2 (`.nvmrc` / `.node-version`); `package.json` requires Node 24.x.
-* **npm**: 11.19.1 bundled with the pinned Node runtime (used for validation).
-
-### 1. Install Dependencies
-```bash
-# If nvm is installed, load it in this shell first when necessary:
-source "$HOME/.nvm/nvm.sh"
+# With nvm installed:
 nvm install
 nvm use
-npm ci
-```
-
-### 2. Start Development Server
-```bash
+npm ci                   # Generates Prisma client; no database connection needed
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 3. Production Build & Linting Verification
+Open [localhost:3000](http://localhost:3000). The public archive works without database or authentication configuration.
+
+### Enable the administrative demonstration
+
+Copy `.env.example` to `.env` **only if `.env` does not already exist**. Set separate random development/test database passwords and matching URL-encoded passwords in the connection URLs. Set `BETTER_AUTH_URL=http://localhost:3000` and an independently generated `BETTER_AUTH_SECRET` of at least 32 random characters. Never commit `.env` or use production credentials locally.
+
 ```bash
+npm run db:up            # Start isolated development and test PostgreSQL services
+npm run db:validate
+npm run db:migrate       # Apply committed development migrations; no reset
+npm run db:seed          # Add missing synthetic fixtures; preserve existing edits
+npm run db:status
+npm run auth:provision-admin  # Interactive local bootstrap; no seeded credentials
+npm run dev
+```
+
+Sign in at `/admin/login`. The guarded `npm run auth:provision-test-user` command can create local VIEWER/COORDINATOR accounts for permission checks. Follow the [backend setup](docs/phase-4-backend.md) and [authentication guide](docs/phase-4-authentication.md) for provisioning prerequisites and command details.
+
+| Database | Local address | Purpose |
+| --- | --- | --- |
+| Development | `127.0.0.1:5434/liminal_dev` | Local app and synthetic demonstration fixtures |
+| Test | `127.0.0.1:5435/liminal_test` | Guarded PostgreSQL integration tests only |
+
+The services have separate credentials and named volumes. Tests validate the target URL and live database identity, never fall back to development, and clean up their own fixtures. `npm run db:stop` stops both services without deleting data.
+
+### Validation commands
+
+```bash
+npm test                 # Unit tests
+npm run test:db          # Dedicated TEST_DATABASE_URL; applies committed test migrations
 npm run typecheck
 npm run lint
 npm run build
-npm run start
+npm run start            # Serve the production build
 ```
 
----
+## Status and limitations
 
-## 🎨 Design Tokens & UI Architecture
+The public archive and administrative workflows described above are implemented. **Hosted deployment is not confirmed:** the latest execution record, dated November 16, 2026, reports infrastructure provisioning, migrations, restricted grants, and synthetic initialization complete, with private administrator bootstrap and the first application deployment still pending. See the [execution record](docs/phase-8-stage-d-execution.md); supplied screenshots do not establish deployment status.
 
-* **Palette**: Charcoal ground (`#141312`), deep charcoal cards (`#1c1a18`), full-width terracotta banners (`#b37a5c`), peach subheadings (`#e39c7a`), and earthy olive accents (`#3d3725`).
-* **Typography**: Geometric grotesque headings (`Montserrat`) loaded via local `@font-face` definitions, paired with readable body copy and warm editorial serif accents (`Georgia`).
-* **Signature Reusable Components**:
-  * `ArchiveBanner`: Permanent top disclaimer identifying Liminal as a historical 2021–2023 archive.
-  * `Header`: Sticky navigation with active path indicator via `usePathname()`, mobile drawer, and keyboard Escape listeners.
-  * `Footer`: Comprehensive site directory, historical location, operating hours, and Instagram archive link.
-  * `PageHero`: Standardized editorial hero for interior historical pages.
-  * `LiminalLogo`: Authentic four-chair illustrated mark with responsive sizing.
-  * `ArchiveDialog`: Accessible native HTML `<dialog>` modal with focus containment, backdrop blur, and Escape key dismissal.
-  * `ArchedPhoto`: Masonry arched window photo frame with subtle captioning.
-  * `ResourceCarousel`: Card-aware carousel with live region announcements and `prefers-reduced-motion` compliance.
+The prepared hosting architecture uses Vercel Hobby and Neon Free PostgreSQL, a bounded pooled runtime connection, separate guarded direct operator connections, and manual encrypted backups. Hosted HTTPS/authentication, ingress enforcement, recovery, and end-to-end mutation checks remain required. [Deployment procedures](docs/phase-8-deployment.md) and the [production runbook](docs/production-runbook.md) document these boundaries.
 
----
+Known limitations:
 
-## 📂 Project Structure
+- An intermittent React Server Component `enqueueModel` / closed-writable-stream issue remains unresolved. Inspect saved state before retrying a failed response; a transaction may already have committed.
+- Recurrence is weekly and generated explicitly; availability evaluation supports Phoenix windows, with unsupported-zone information conservatively treated as unconfirmed when Phoenix coverage is insufficient.
+- Assignment history preserves relationships and creation/latest-change timestamps, not a full audit trail or the original scheduled interval after a shift is moved. Later volunteer deactivation or role removal does not automatically cancel existing assignments.
+- There is no expense ledger, event-management backend, volunteer self-service coverage workflow, completion workflow, or account-management/password-reset UI. Reserved permission names do not imply those features exist.
+- Automated service/rendering tests do not establish complete browser accessibility or responsive verification. Local login throttling is process-local; effective hosted ingress protection remains to be verified.
 
-```
-├── docs/                         # Architectural, design & completion reports
-│   ├── architecture.md           # Architecture boundaries & stack selection
-│   ├── database-design.md        # Relational schema & Prisma models (Phase 4+)
-│   ├── design-reference.md       # Color tokens, typography, layout specs
-│   ├── development-roadmap.md    # Phased roadmap (Phases 1–7)
-│   ├── frontend-design-audit.md  # Detailed UI/UX audit by Astra
-│   ├── historical-content.md     # Verified primary sources, timeline, menu & essays
-│   ├── operational-workflows.md  # Historical volunteer, finance & event workflows
-│   ├── phase-2-completion.md     # Phase 2 quality review & audit closure
-│   └── phase-3-completion.md     # Phase 3 multipage historical archive report
-├── public/
-│   ├── fonts/                    # Local Montserrat TrueType font files
-│   └── images/
-│       ├── archival/             # Curated historical photography & flyers
-│       └── branding/             # Authentic Liminal logo & favicon assets
-├── src/
-│   ├── app/
-│   │   ├── about/page.tsx        # Our Story, Philosophy & Facilities
-│   │   ├── cafe/page.tsx         # The Café & Equity Model Simulator
-│   │   ├── community/page.tsx    # Volunteering, Teams & Operational Practices
-│   │   ├── events/page.tsx       # Community Events Archive & Flyer Lightbox
-│   │   ├── gallery/page.tsx      # Curated Photo Archive & Lightbox
-│   │   ├── layout.tsx            # Root layout with ArchiveBanner, Header & Footer
-│   │   ├── page.tsx              # Homepage assembly
-│   │   └── globals.css           # Tailwind base, typography & dialog rules
-│   ├── components/
-│   │   └── public/               # Reusable presentation components
-│   │       ├── ArchedPhoto.tsx
-│   │       ├── ArchiveBanner.tsx
-│   │       ├── ArchiveDialog.tsx
-│   │       ├── Footer.tsx
-│   │       ├── Header.tsx
-│   │       ├── LiminalLogo.tsx
-│   │       ├── PageHero.tsx
-│   │       └── ResourceCarousel.tsx
-│   ├── data/                     # Typed historical data models
-│   │   ├── community.ts          # Volunteer teams, principles & shift checklists
-│   │   ├── essays.ts             # Co-founders' essays with full transcripts
-│   │   ├── events.ts             # 12 historical events with flyer references
-│   │   ├── facilities.ts         # 5 architectural spaces and room features
-│   │   ├── menu.ts               # Beverages, small plates & sliding scale tiers
-│   │   └── photos.ts             # 21 curated archive photos with room tags
-│   └── lib/
-│       └── utils.ts              # Styling utilities
-├── next.config.mjs               # Static unoptimized images, redirects & Webpack config
-├── tailwind.config.ts            # Custom color palette & font configuration
-├── tsconfig.json                 # TypeScript strict configuration
-└── package.json                  # Next.js 16, React 19, Lucide React, Tailwind
+## Repository guide
+
+```text
+src/app/(public)/       Six historical routes and public layout
+src/app/admin/          Login and protected administrative routes/actions
+src/app/api/auth/       Authentication route handler
+src/components/        Public presentation and administrative form components
+src/data/              Typed public historical content
+src/server/            Auth, authorization, database, volunteer and scheduling services
+prisma/                Schema, committed migrations and synthetic seed
+scripts/               Guarded local provisioning and production operator tools
+tests/unit/            Pure logic, validation and configuration tests
+tests/integration/     PostgreSQL and authentication workflow tests
+public/                Fonts, branding, reviewed archive assets and supplied screenshots
+docs/                  Architecture, implementation evidence and operating guides
+docs/screenshots/      README screenshot copies
 ```
 
----
+Further reading: [architecture](docs/architecture.md), [volunteer management](docs/phase-5a-volunteers.md), [assignments](docs/phase-5c-assignments.md), [design reference](docs/design-reference.md), and [frontend design audit](docs/frontend-design-audit.md). Earlier phase reports describe their original checkpoints; current code and later policy documents supersede them.
 
-## 🛡️ Privacy, Security & Historical Integrity
+## Historical accuracy and privacy
 
-* **Zero Sensitive PII**: All private volunteer applications, addresses, phone numbers, tax forms, and internal financial records from the raw historical Google Drive download are strictly excluded from the Git repository via `.gitignore` (`/references/`, `*.zip`, `*.MOV`).
-* **Verified Historical Sources**: Every menu item, historical event, and philosophical quotation is derived directly from authentic primary archival documents (`_Standard Practices at Liminal.docx`, `blog.html`, `cafe+menu.html`, `Screenshot 2026-11-07 at 4.02.52 PM.png`). No historical facts or dates have been fabricated.
-* **Clear Historical Retrospective Framing**: Every public page prominently communicates that Liminal permanently closed in 2023, framing all content in warm, respectful past-tense narrative language.
+The original center and the modern administrative demonstration are distinct. Use only synthetic administrative records and reviewed public assets; private volunteer applications, contact records, tax materials, and raw archival documents must not be published. Original reference material and local secrets are excluded through repository ignore rules, which do not replace a review before publication.
 
-### Phase 4 Stage D administrative interface
-
-Login, a protected dashboard, volunteer management, and shift scheduling are implemented at `/admin/login` and `/admin`. Public layouts and URLs remain separate. See the [Stage D guide](docs/phase-4-admin.md) for setup/provisioning and [Phase 5A](docs/phase-5a-volunteers.md) for volunteer editing. [Phase 5B](docs/phase-5b-scheduling.md) adds one-time shifts, weekly patterns, explicit generation/extension, occurrence editing/cancellation, a role-organized shift-type catalog, a weekly calendar/list with multi-select filters, and atomic repeating-schedule shortening/cancellation. Use `npm run auth:provision-test-user` for guarded local VIEWER/COORDINATOR accounts. Assignment management remains deferred; browser checks and remaining limits are documented in the Phase 5B guide.
+The [historical-content correction record](docs/phase-3-content-refinement.md) explains removed unsupported chronology, essays, menu/pricing simulation, and shift-standard claims. Precise photo dates and some proposed event occurrences remain unverified. The older [historical research notes](docs/historical-content.md) and [operational workflow notes](docs/operational-workflows.md) provide context, not blanket verification or a feature specification; firsthand corrections and reviewed current content take precedence.
